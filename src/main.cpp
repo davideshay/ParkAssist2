@@ -6,9 +6,11 @@
 #include <WebSerial.h>
 #include <ElegantOTA.h>
 #include "wificodes.h"
+#include <HCSR04.h>
 
 AsyncWebServer server(80);
 AsyncWebServer serverl(81);
+UltraSonicDistanceSensor distanceSensor(13, 12);  // Initialize sensor that uses digital pins 13 and 12.
 
 unsigned long ota_progress_millis = 0;
 
@@ -92,18 +94,17 @@ void loop() {
     static unsigned long last_print_time = millis();
     ElegantOTA.loop();
     WebSerial.loop();
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(1000);
-    digitalWrite(LED_BUILTIN,LOW);
-    delay(1000);
+//    digitalWrite(LED_BUILTIN, HIGH);
+//    delay(1000);
+//    digitalWrite(LED_BUILTIN,LOW);
+//    delay(1000);
 
 
-    if ((unsigned long)(millis() - last_print_time) > 2000) {
-      WebSerial.print(F("IP address: "));
-      WebSerial.println(WiFi.localIP());
-      WebSerial.printf("Uptime: %lums\n", millis());
-      WebSerial.printf("Free heap: %u\n", ESP.getFreeHeap());
-      last_print_time = millis();
+    if ((unsigned long)(millis() - last_print_time) > 500) {
+        double distance = distanceSensor.measureDistanceCm(20);  
+        WebSerial.print(distance);
+        WebSerial.println(F("cm"));
+        last_print_time = millis();
     }
 
   // if (digitalRead(4) == LOW) {
