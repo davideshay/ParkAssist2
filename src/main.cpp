@@ -23,11 +23,11 @@
 // 41 - HCSR04 Echo (in)
 // 40 - IR Break Sensor
 // 39 - WS2812 LED Panel Out
-#define TEMP_SENSOR_BUS 1
-#define DIST_SENSOR_TRIGGER 42
-#define DIST_SENSOR_ECHO 41
-#define IR_BREAK_SENSOR 40
-#define LED_PANEL_PIN 39
+#define TEMP_SENSOR_BUS 14
+#define DIST_SENSOR_TRIGGER 19
+#define DIST_SENSOR_ECHO 20
+#define IR_BREAK_SENSOR 21
+#define LED_PANEL_PIN 47
 
 #define COLOR_ORDER RGB
 #define CHIPSET     WS2812
