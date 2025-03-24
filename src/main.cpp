@@ -32,12 +32,40 @@
 #define IR_BREAK_SENSOR 21
 // #define LED_PANEL_PIN 47
 
-char defaultCarLetter = 'R';
-carInfoStruct carInfo[3] = {
-  {1,'R',20,0},
-  {2,'3',35,20},
-  {3,'Y',30,25}
+
+static const CRGB defaultLogoColors[] = {
+  CRGB::Black,
+  CRGB::White,
+  CRGB::Red,
+  CRGB::Green,
+  CRGB::Blue,
+  CRGB::Yellow,
+  CRGB::Orange,
+  CRGB::Purple
 };
+
+// structureof carLogo - 1 blank bit, followed by 3 bits (color 0-7) each 5x to represent first 5 pixels. 
+// Cover 60 pixels -- 6 rows x 10 columns. Go row-by-row in order. So first int_16 is first 5 pixels.
+// Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
+
+carInfoStruct defaultCar = 
+  { .targetFrontDistanceCm = 60, .maxFrontDistanceCm = 30, .lengthOffsetCm = 0, .carLogo = 
+    {
+      0b0001001001000000,
+      0b0001000001001001,
+      0b0001000001000001,
+      0b0001000001000000,
+      0b0001001001000000,
+      0b0001000001000000,
+      0b0001001000000000,
+      0b0001000001001001,
+      0b0001000001000000,
+      0b0001000000000001,
+      0b0001000001000000,
+      0b0001000001001001
+    },
+    .logoColors = defaultLogoColors
+  };
 
 carInfoStruct currentCar;
 
@@ -54,7 +82,6 @@ enum stateOpts {
 stateOpts curState = BASELINE;
 
 int secsToReset = 90;
-
 unsigned long camera_checking_millis = 0;
 int maxCameraCheckMillis = 5000;
 unsigned long timer_started_millis = 0;
@@ -73,25 +100,19 @@ DallasTemperature tempSensors(&oneWire);
 
 float currentTemp;
 double currentDistance;
+distanceEvaluation currentDistanceEvaluation;
+double carFirstDetectedDistanceFromFront;
+boolean carFirstDetected = false;
 boolean carDetected;
 boolean useMetric = false;
 
 unsigned long ota_progress_millis = 0;
 
-void initLEDs();
-
-carInfoStruct getCarByLetter(char carLetter) {
-  
-}
-
 void onOTAStart() {
-  // Log when OTA has started
   Serial.println("OTA update started!");
-  // <Add your own code here>
 }
 
 void onOTAProgress(size_t current, size_t final) {
-  // Log every 1 second
   if (millis() - ota_progress_millis > 1000) {
     ota_progress_millis = millis();
     Serial.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
@@ -99,13 +120,11 @@ void onOTAProgress(size_t current, size_t final) {
 }
 
 void onOTAEnd(bool success) {
-  // Log when OTA has finished
   if (success) {
     Serial.println("OTA update finished successfully!");
   } else {
     Serial.println("There was an error during OTA update!");
   }
-  // <Add your own code here>
 }
 
 void setup() {
@@ -141,7 +160,7 @@ void setup() {
   ElegantOTA.onEnd(onOTAEnd);
 
   serverOTA.begin();
-  Serial.println("HTTP server started");
+  Serial.println("OTA HTTP server started");
 
   WebSerial.begin(&serverLog);
   WebSerial.onMessage([](uint8_t *data, size_t len) {
@@ -160,7 +179,6 @@ void setup() {
   tempSensors.begin();
   initCamera();
   initLEDs();
-
   
   serverCam.on("/picture", HTTP_GET, [](AsyncWebServerRequest * request) {
     camera_fb_t * frame = NULL;
@@ -172,23 +190,54 @@ void setup() {
 
 }
 
+distanceEvaluation evaluateDistance() {
+  distanceEvaluation distEval = {
+    .colorRGB = CRGB::Red,
+    .colorCode = RED,
+    .colorOffset = 0
+  };
+  if (digitalRead(IR_BREAK_SENSOR) == LOW) {
+    carDetected = true;
+    if (!carFirstDetected) {
+      carFirstDetected = true;
+      carFirstDetectedDistanceFromFront = currentDistance;
+    }
+  } else {
+    carDetected = false;
+  }
+  if (carDetected) {
+    distEval.colorRGB = CRGB::Yellow;
+    distEval.colorCode = YELLOW;
+  };
+  if (currentDistance < currentCar.targetFrontDistanceCm) {
+    distEval.colorRGB = CRGB::Red;
+    distEval.colorCode = RED;
+    // car is at 80cm, target=90, max=60 --> 30 cm range from target to max
+    // how far inside that range = 90-80 = 10cm, so using 30% of range, offset should be 1
+    distEval.colorOffset = (((currentCar.targetFrontDistanceCm - currentDistance) / (currentCar.targetFrontDistanceCm - currentCar.maxFrontDistanceCm))*3);
+  } else {
+    if (true) {};
+    distEval.colorRGB = CRGB::Green;
+    distEval.colorCode = GREEN;
+  }
+
+}
+
 void getCurrentData() {
   tempSensors.requestTemperatures(); 
   currentTemp = tempSensors.getTempCByIndex(0);
   currentDistance = distanceSensor.measureDistanceCm(currentTemp);  
-  if (digitalRead(IR_BREAK_SENSOR) == LOW) {
-    carDetected = true;
-  } else {
-    carDetected = false;
-  }
-}
+  currentDistanceEvaluation = evaluateDistance();
+};
 
 void displayCurrentData() {
   FastLED.clear();
-  drawDistance(currentDistance);
-  drawDistanceWord(useMetric);
-  drawCarLogo(currentCar.carLetter);
+  CRGB color;
+  drawDistance(currentDistance,currentDistanceEvaluation);
+  drawDistanceWord(useMetric,currentDistanceEvaluation);
+  drawCarLogo(currentCar);
   drawPictureGuide(currentCar,currentDistance,carDetected);
+  FastLED.show();
 }
 
 void loop() {
@@ -213,7 +262,7 @@ void loop() {
       case DETECTING_CAR_TYPE:
         if (millis() - camera_checking_millis > maxCameraCheckMillis) {
           WebSerial.println(F("Car Detection Timeout, set to default"));
-          currentCar = carInfo[0];
+          currentCar = defaultCar;
           curState = CAR_TYPE_DETECTED;
         }
         break;
@@ -235,6 +284,8 @@ void loop() {
         FastLED.clear();
         FastLED.show();
         curState = BASELINE;
+        carFirstDetected = false;
+        carFirstDetectedDistanceFromFront = 0;
     }
 
     if ((unsigned long)(millis() - last_print_time) > 3000) {
@@ -252,8 +303,5 @@ void loop() {
           WebSerial.println(F("IR SENSOR STILL CONNECTED - NO CAR"));
         }
     }
-
-    drawLEDs();
-    
 }
 
