@@ -5,11 +5,14 @@
 #include <ESPAsyncWebServer.h>
 #include <WebSerial.h>
 #include <ElegantOTA.h>
-#include "wificodes.h"
+#include <wificodes.h>
 #include <HCSR04.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include "esp_camera.h"
+#include <esp_camera.h>
+#include <leds.h>
+#include <camera.h>
+#include <parkassist.h>
 #include <FastLED.h>
 
 // 
@@ -27,22 +30,34 @@
 #define DIST_SENSOR_TRIGGER 19
 #define DIST_SENSOR_ECHO 20
 #define IR_BREAK_SENSOR 21
-#define LED_PANEL_PIN 47
+// #define LED_PANEL_PIN 47
 
-#define COLOR_ORDER RGB
-#define CHIPSET     WS2812
-#define BRIGHTNESS 64
+char defaultCarLetter = 'R';
+carInfoStruct carInfo[3] = {
+  {1,'R',20,0},
+  {2,'3',35,20},
+  {3,'Y',30,25}
+};
 
-// Params for width and height
-const uint8_t kMatrixWidth = 16;
-const uint8_t kMatrixHeight = 16;
+carInfoStruct currentCar;
 
-// Param for different pixel layouts
-const bool    kMatrixSerpentineLayout = true;
-const bool    kMatrixVertical = false;
+enum stateOpts {
+  BASELINE,
+  DOOR_OPENING,
+  CAR_PRESENT,
+  DETECTING_CAR_TYPE,
+  CAR_TYPE_DETECTED,
+  SHOWING_DATA,
+  TIMER_EXPIRED
+};
 
-#define CAMERA_MODEL_ESP32S3_EYE // Has PSRAM
-#include "camera_pins.h"
+stateOpts curState = BASELINE;
+
+int secsToReset = 90;
+
+unsigned long camera_checking_millis = 0;
+int maxCameraCheckMillis = 5000;
+unsigned long timer_started_millis = 0;
 
 AsyncWebServer serverOTA(80);
 AsyncWebServer serverLog(81);
@@ -56,66 +71,18 @@ OneWire oneWire(TEMP_SENSOR_BUS);
 // Pass our oneWire reference to Dallas Temperature sensor 
 DallasTemperature tempSensors(&oneWire);
 
+float currentTemp;
+double currentDistance;
+boolean carDetected;
+boolean useMetric = false;
+
 unsigned long ota_progress_millis = 0;
 
-uint16_t XY( uint8_t x, uint8_t y)
-{
-  uint16_t i;
+void initLEDs();
+
+carInfoStruct getCarByLetter(char carLetter) {
   
-  if( kMatrixSerpentineLayout == false) {
-    if (kMatrixVertical == false) {
-      i = (y * kMatrixWidth) + x;
-    } else {
-      i = kMatrixHeight * (kMatrixWidth - (x+1))+y;
-    }
-  }
-
-  if( kMatrixSerpentineLayout == true) {
-    if (kMatrixVertical == false) {
-      if( y & 0x01) {
-        // Odd rows run backwards
-        uint8_t reverseX = (kMatrixWidth - 1) - x;
-        i = (y * kMatrixWidth) + reverseX;
-      } else {
-        // Even rows run forwards
-        i = (y * kMatrixWidth) + x;
-      }
-    } else { // vertical positioning
-      if ( x & 0x01) {
-        i = kMatrixHeight * (kMatrixWidth - (x+1))+y;
-      } else {
-        i = kMatrixHeight * (kMatrixWidth - x) - (y+1);
-      }
-    }
-  }
-  
-  return i;
 }
-
-#define NUM_LEDS (kMatrixWidth * kMatrixHeight)
-CRGB leds_plus_safety_pixel[ NUM_LEDS + 1];
-CRGB* const leds( leds_plus_safety_pixel + 1);
-
-uint16_t XYsafe( uint8_t x, uint8_t y)
-{
-  if( x >= kMatrixWidth) return -1;
-  if( y >= kMatrixHeight) return -1;
-  return XY(x,y);
-}
-
-void DrawOneFrame( uint8_t startHue8, int8_t yHueDelta8, int8_t xHueDelta8)
-{
-  uint8_t lineStartHue = startHue8;
-  for( uint8_t y = 0; y < kMatrixHeight; y++) {
-    lineStartHue += yHueDelta8;
-    uint8_t pixelHue = lineStartHue;      
-    for( uint8_t x = 0; x < kMatrixWidth; x++) {
-      pixelHue += xHueDelta8;
-      leds[ XY(x, y)]  = CHSV( pixelHue, 255, 255);
-    }
-  }
-}
-
 
 void onOTAStart() {
   // Log when OTA has started
@@ -140,71 +107,6 @@ void onOTAEnd(bool success) {
   }
   // <Add your own code here>
 }
-
-void initCamera() {
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
-  config.pin_d0 = Y2_GPIO_NUM;
-  config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM;
-  config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM;
-  config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM;
-  config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_GPIO_NUM;
-  config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM;
-  config.pin_href = HREF_GPIO_NUM;
-  config.pin_sccb_sda = SIOD_GPIO_NUM;
-  config.pin_sccb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn = PWDN_GPIO_NUM;
-  config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  config.frame_size = FRAMESIZE_UXGA;
-  config.pixel_format = PIXFORMAT_JPEG;  // for streaming
-  //config.pixel_format = PIXFORMAT_RGB565; // for face detection/recognition
-  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
-  config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.jpeg_quality = 12;
-  config.fb_count = 1;
-
-  // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
-  //                      for larger pre-allocated frame buffer.
-  if (config.pixel_format == PIXFORMAT_JPEG) {
-    if (psramFound()) {
-      config.jpeg_quality = 10;
-      config.fb_count = 2;
-      config.grab_mode = CAMERA_GRAB_LATEST;
-    } else {
-      // Limit the frame size when PSRAM is not available
-      config.frame_size = FRAMESIZE_SVGA;
-      config.fb_location = CAMERA_FB_IN_DRAM;
-    }
-  } else {
-    // Best option for face detection/recognition
-    config.frame_size = FRAMESIZE_240X240;
-    #if CONFIG_IDF_TARGET_ESP32S3
-      config.fb_count = 2;
-    #endif  
-  }
-    // camera init
-    esp_err_t err = esp_camera_init(&config);
-    if (err != ESP_OK) {
-      Serial.printf("Camera init failed with error 0x%x", err);
-      return;
-    }
-    sensor_t *s = esp_camera_sensor_get();
-    // drop down frame size for higher initial frame rate
-    if (config.pixel_format == PIXFORMAT_JPEG) {
-      s->set_framesize(s, FRAMESIZE_QVGA);
-    }
-    #if defined(CAMERA_MODEL_ESP32S3_EYE)
-      s->set_vflip(s, 1);
-    #endif
-  
-}  
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -257,10 +159,9 @@ void setup() {
   serverLog.begin();
   tempSensors.begin();
   initCamera();
+  initLEDs();
 
-  FastLED.addLeds<CHIPSET, LED_PANEL_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalSMD5050);
-  FastLED.setBrightness( BRIGHTNESS );
-
+  
   serverCam.on("/picture", HTTP_GET, [](AsyncWebServerRequest * request) {
     camera_fb_t * frame = NULL;
     frame = esp_camera_fb_get();
@@ -271,12 +172,72 @@ void setup() {
 
 }
 
+void getCurrentData() {
+  tempSensors.requestTemperatures(); 
+  currentTemp = tempSensors.getTempCByIndex(0);
+  currentDistance = distanceSensor.measureDistanceCm(currentTemp);  
+  if (digitalRead(IR_BREAK_SENSOR) == LOW) {
+    carDetected = true;
+  } else {
+    carDetected = false;
+  }
+}
+
+void displayCurrentData() {
+  FastLED.clear();
+  drawDistance(currentDistance);
+  drawDistanceWord(useMetric);
+  drawCarLogo(currentCar.carLetter);
+  drawPictureGuide(currentCar,currentDistance,carDetected);
+}
+
 void loop() {
     static unsigned long last_print_time = millis();
     ElegantOTA.loop();
     WebSerial.loop();
 
-    if ((unsigned long)(millis() - last_print_time) > 500) {
+    switch (curState) {
+      case BASELINE:
+        if (digitalRead(IR_BREAK_SENSOR) == LOW) {
+          WebSerial.println(F("IR Sensor Broken from default. Car Present"));
+          timer_started_millis = millis();
+          carDetected = true;
+          curState = CAR_PRESENT;
+        }
+        break;
+      case CAR_PRESENT:
+        curState = DETECTING_CAR_TYPE;
+        camera_checking_millis = millis();
+        WebSerial.println(F("Now Detecting Car Type..."));
+        break;
+      case DETECTING_CAR_TYPE:
+        if (millis() - camera_checking_millis > maxCameraCheckMillis) {
+          WebSerial.println(F("Car Detection Timeout, set to default"));
+          currentCar = carInfo[0];
+          curState = CAR_TYPE_DETECTED;
+        }
+        break;
+      case CAR_TYPE_DETECTED:
+        curState = SHOWING_DATA;
+        WebSerial.println(F("Car Detected. Showing Data..."));
+        timer_started_millis = millis();
+        break;
+      case SHOWING_DATA:
+        getCurrentData();
+        displayCurrentData();
+        if (((millis() - timer_started_millis) > (unsigned long)(secsToReset * 1000))  && !carDetected) {
+            WebSerial.println(F("Timer expired and no car Detected"));
+            curState = TIMER_EXPIRED;
+        }
+        break;
+      case TIMER_EXPIRED:
+        WebSerial.println(F("Timer expired, turning off display and resetting to baseline"));
+        FastLED.clear();
+        FastLED.show();
+        curState = BASELINE;
+    }
+
+    if ((unsigned long)(millis() - last_print_time) > 3000) {
         tempSensors.requestTemperatures(); 
         float temperatureC = tempSensors.getTempCByIndex(0);
         WebSerial.print(temperatureC);
@@ -292,16 +253,7 @@ void loop() {
         }
     }
 
-    uint32_t ms = millis();
-    int32_t yHueDelta32 = ((int32_t)cos16( ms * (27/1) ) * (350 / kMatrixWidth));
-    int32_t xHueDelta32 = ((int32_t)cos16( ms * (39/1) ) * (310 / kMatrixHeight));
-    DrawOneFrame( ms / 65536, yHueDelta32 / 32768, xHueDelta32 / 32768);
-    if( ms < 5000 ) {
-      FastLED.setBrightness( scale8( BRIGHTNESS, (ms * 256) / 5000));
-    } else {
-      FastLED.setBrightness(BRIGHTNESS);
-    }
-    FastLED.show();
-
+    drawLEDs();
+    
 }
 
