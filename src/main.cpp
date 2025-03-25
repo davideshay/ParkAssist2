@@ -103,6 +103,8 @@ double currentDistance;
 distanceEvaluation currentDistanceEvaluation;
 double carFirstDetectedDistanceFromFront;
 boolean carFirstDetected = false;
+double carFirstClearedSensorDistanceFromFront;
+boolean carFirstClearedSensor = false;
 boolean carDetected;
 boolean useMetric = false;
 
@@ -191,6 +193,7 @@ void setup() {
 }
 
 distanceEvaluation evaluateDistance() {
+  // TODO -- does not deal with lengthOffsets for other cars
   distanceEvaluation distEval = {
     .colorRGB = CRGB::Red,
     .colorCode = RED,
@@ -201,26 +204,39 @@ distanceEvaluation evaluateDistance() {
     if (!carFirstDetected) {
       carFirstDetected = true;
       carFirstDetectedDistanceFromFront = currentDistance;
+      WebSerial.print(F("First Detected Car at distance: "));
+      WebSerial.println(carFirstDetectedDistanceFromFront);
     }
   } else {
+    if (carDetected) {
+      carFirstClearedSensor = true;
+      carFirstClearedSensorDistanceFromFront = currentDistance;
+      WebSerial.print(F("First Detected Car Cleared Sensor at distance: "));
+      WebSerial.println(carFirstClearedSensorDistanceFromFront);
+    }
     carDetected = false;
   }
   if (carDetected) {
     distEval.colorRGB = CRGB::Yellow;
     distEval.colorCode = YELLOW;
+    // car is at 120cm, first detected car at 200cm, target = 90 --> 110 cm range from first detected to target
+    // how far inside = 200-120 = 80cm, so 80/110 = 45% of range, offset should be 2
+    distEval.colorOffset = constrain(((carFirstDetectedDistanceFromFront - currentDistance) / (carFirstDetectedDistanceFromFront - currentCar.targetFrontDistanceCm))*yellowBoxMaxOffset,0,yellowBoxMaxOffset);
   };
   if (currentDistance < currentCar.targetFrontDistanceCm) {
     distEval.colorRGB = CRGB::Red;
     distEval.colorCode = RED;
     // car is at 80cm, target=90, max=60 --> 30 cm range from target to max
     // how far inside that range = 90-80 = 10cm, so using 30% of range, offset should be 1
-    distEval.colorOffset = (((currentCar.targetFrontDistanceCm - currentDistance) / (currentCar.targetFrontDistanceCm - currentCar.maxFrontDistanceCm))*3);
+    distEval.colorOffset = constrain((((currentCar.targetFrontDistanceCm - currentDistance) / (currentCar.targetFrontDistanceCm - currentCar.maxFrontDistanceCm))*redBoxMaxOffset),0,redBoxMaxOffset);
   } else {
-    if (true) {};
+    // car cleared sensor at 100cm, car is now at 95cm, target is 90 --> 10cm range from cleared->target
+    // how far inside that range = 100-95 = 5cm/10cm --> offset = 2
+    distEval.colorOffset = constrain(((carFirstClearedSensorDistanceFromFront - currentDistance) / (carFirstClearedSensorDistanceFromFront - currentCar.targetFrontDistanceCm)*greenBoxMaxOffset),0,greenBoxMaxOffset);
     distEval.colorRGB = CRGB::Green;
     distEval.colorCode = GREEN;
   }
-
+  return distEval;
 }
 
 void getCurrentData() {
@@ -236,7 +252,7 @@ void displayCurrentData() {
   drawDistance(currentDistance,currentDistanceEvaluation);
   drawDistanceWord(useMetric,currentDistanceEvaluation);
   drawCarLogo(currentCar);
-  drawPictureGuide(currentCar,currentDistance,carDetected);
+  drawPictureGuide(currentDistanceEvaluation);
   FastLED.show();
 }
 
@@ -286,6 +302,8 @@ void loop() {
         curState = BASELINE;
         carFirstDetected = false;
         carFirstDetectedDistanceFromFront = 0;
+        carFirstClearedSensor = false;
+        carFirstClearedSensorDistanceFromFront = 0;
     }
 
     if ((unsigned long)(millis() - last_print_time) > 3000) {
