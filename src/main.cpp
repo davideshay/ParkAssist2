@@ -37,7 +37,8 @@
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
 
 carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 60, .maxFrontDistanceCm = 30, .lengthOffsetCm = 0, .carLogo = 
+  { .targetFrontDistanceCm = 60, .maxFrontDistanceCm = 30, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 300,
+     .carLogo = 
     {
       0b0001001001000000,
       0b0001000001001001,
@@ -181,7 +182,7 @@ void setup() {
   serverCam.on("/picture", HTTP_GET, [](AsyncWebServerRequest * request) {
     camera_fb_t * frame = NULL;
     frame = esp_camera_fb_get();
-    request->send_P(200, "image/jpeg", (const uint8_t *)frame->buf, frame->len);
+    request->send(200, "image/jpeg", (const uint8_t *)frame->buf, frame->len);
     esp_camera_fb_return(frame);
   });
   serverCam.begin();
@@ -245,7 +246,7 @@ void getCurrentData() {
 void displayCurrentData() {
   FastLED.clear();
   CRGB color;
-  drawDistance(currentDistance,currentDistanceEvaluation);
+  drawDistance(currentDistance,useMetric,currentDistanceEvaluation);
   drawDistanceWord(useMetric,currentDistanceEvaluation);
   drawCarLogo(currentCar);
   drawPictureGuide(currentDistanceEvaluation);

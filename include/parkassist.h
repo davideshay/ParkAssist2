@@ -7,6 +7,7 @@ struct carInfoStruct {
     int targetFrontDistanceCm;
     int maxFrontDistanceCm;
     int lengthOffsetCm;
+    int sensorDistanceFromFrontCm;
     uint16_t carLogo[12];
     CRGB logoColors[8];
   };

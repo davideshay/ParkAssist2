@@ -99,6 +99,9 @@ void drawSecondDigit(int digit, CRGB color) {
 void drawInfiniteDistance() {
     drawFirstDigit(9,CRGB::White);
     drawSecondDigit(9,CRGB::White);
+    leds[ XYsafe(greaterSignCoord[0],greaterSignCoord[1])] = CRGB::White;
+    leds[ XYsafe(greaterSignCoord[0]+1,greaterSignCoord[1]+1)] = CRGB::White;
+    leds[ XYsafe(greaterSignCoord[0],greaterSignCoord[1]+2)] = CRGB::White;
 };
 
 void drawNegativeSign(CRGB color) {
@@ -106,16 +109,20 @@ void drawNegativeSign(CRGB color) {
   leds[ XYsafe(negSignCoord[0]+1,negSignCoord[1])] = color;
 }
 
-void drawDistance(double currentDistance,distanceEvaluation distEval) {
-  if (abs(currentDistance) > 99) {
+void drawDistance(double currentDistance,boolean useMetric, distanceEvaluation distEval) {
+  double convertedDistance = currentDistance;
+  if (!useMetric) {
+    convertedDistance = currentDistance / 2.54;
+  }
+  if (abs(convertedDistance) > 99) {
     drawInfiniteDistance();
     return;
   }
-  int absDistance = currentDistance;
-  if (currentDistance < 0) {
+  int absDistance = convertedDistance;
+  if (convertedDistance < 0) {
     drawNegativeSign(distEval.colorRGB);
   }
-  absDistance=abs(currentDistance);
+  absDistance=abs(convertedDistance);
   if (absDistance < 10) {
     drawFirstDigit(absDistance,distEval.colorRGB);
     return;
@@ -132,7 +139,7 @@ void drawDistanceWord(boolean useMetric,distanceEvaluation distEval) {
       uint16_t row;
       if (useMetric) {row = word_cm_9x3[y];} else {row = word_in_9x3[y];}
       bool pixel = getBit(row,7+x);
-      //TODO
+      leds[ XYsafe(distanceWordCoord[0]+x,distanceWordCoord[1]+y)] = distEval.colorRGB;
     }
   }
 };
