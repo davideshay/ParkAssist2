@@ -32,18 +32,6 @@
 #define IR_BREAK_SENSOR 21
 // #define LED_PANEL_PIN 47
 
-
-static const CRGB defaultLogoColors[] = {
-  CRGB::Black,
-  CRGB::White,
-  CRGB::Red,
-  CRGB::Green,
-  CRGB::Blue,
-  CRGB::Yellow,
-  CRGB::Orange,
-  CRGB::Purple
-};
-
 // structureof carLogo - 1 blank bit, followed by 3 bits (color 0-7) each 5x to represent first 5 pixels. 
 // Cover 60 pixels -- 6 rows x 10 columns. Go row-by-row in order. So first int_16 is first 5 pixels.
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
@@ -64,7 +52,15 @@ carInfoStruct defaultCar =
       0b0001000001000000,
       0b0001000001001001
     },
-    .logoColors = defaultLogoColors
+    .logoColors = {
+      CRGB::Black,
+      CRGB::White,
+      CRGB::Red,
+      CRGB::Green,
+      CRGB::Blue,
+      CRGB::Yellow,
+      CRGB::Orange,
+      CRGB::Purple }
   };
 
 carInfoStruct currentCar;
