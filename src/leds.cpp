@@ -20,6 +20,7 @@ const bool    kMatrixVertical = false;
 #define NUM_LEDS (kMatrixWidth * kMatrixHeight)
 CRGB leds_plus_safety_pixel[ NUM_LEDS + 1];
 CRGB* const leds( leds_plus_safety_pixel + 1);
+boolean logoDebugged = false;
 
 void initLEDs() {
     FastLED.addLeds<CHIPSET, LED_PANEL_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalSMD5050);
@@ -29,30 +30,31 @@ void initLEDs() {
 uint16_t XY( uint8_t x, uint8_t y)
 {
   uint16_t i;
+  uint8_t rev_y = kMatrixHeight - y - 1;
   
   if( kMatrixSerpentineLayout == false) {
     if (kMatrixVertical == false) {
-      i = (y * kMatrixWidth) + x;
+      i = (rev_y * kMatrixWidth) + x;
     } else {
-      i = kMatrixHeight * (kMatrixWidth - (x+1))+y;
+      i = kMatrixHeight * (kMatrixWidth - (x+1))+rev_y;
     }
   }
 
   if( kMatrixSerpentineLayout == true) {
     if (kMatrixVertical == false) {
-      if( y & 0x01) {
+      if( rev_y & 0x01) {
         // Odd rows run backwards
         uint8_t reverseX = (kMatrixWidth - 1) - x;
-        i = (y * kMatrixWidth) + reverseX;
+        i = (rev_y * kMatrixWidth) + reverseX;
       } else {
         // Even rows run forwards
-        i = (y * kMatrixWidth) + x;
+        i = (rev_y * kMatrixWidth) + x;
       }
     } else { // vertical positioning
       if ( x & 0x01) {
-        i = kMatrixHeight * (kMatrixWidth - (x+1))+y;
+        i = kMatrixHeight * (kMatrixWidth - (x+1))+rev_y;
       } else {
-        i = kMatrixHeight * (kMatrixWidth - x) - (y+1);
+        i = kMatrixHeight * (kMatrixWidth - x) - (rev_y+1);
       }
     }
   }
@@ -77,13 +79,15 @@ bool getBit(uint16_t input, int position) // position in range 0-15 (critically 
 
 void drawADigit(int digit, int startX, int startY, CRGB color) {
   if (digit < 0 || digit > 9) {return;}
-  int16_t digitMap = digits3x5[digit];
+  uint16_t digitMap = digits3x5[digit];
   for (size_t x = 0; x < 3; x++)
   {
     for (size_t y = 0; y < 5; y++)
     {
-      bool pixel = getBit(digitMap,(x*3)+y);
-      leds[ XYsafe(startX + x, startY + y)] = color;
+      bool pixel = getBit(digitMap,(y*3)+x+1);
+      if (pixel == 1) {
+        leds[ XYsafe(startX + x, startY + y)] = color;
+      }
     }
   }
 }
@@ -109,26 +113,26 @@ void drawNegativeSign(CRGB color) {
   leds[ XYsafe(negSignCoord[0]+1,negSignCoord[1])] = color;
 }
 
-void drawDistance(double currentDistance,boolean useMetric, distanceEvaluation distEval) {
+void drawDistance(double currentDistance,boolean useMetric, distanceEvaluation distEval, carInfoStruct currentCar) {
   double convertedDistance = currentDistance;
+  double absDistance = currentDistance - currentCar.targetFrontDistanceCm;
   if (!useMetric) {
-    convertedDistance = currentDistance / 2.54;
+    absDistance = absDistance / 2.54;
   }
-  if (abs(convertedDistance) > 99) {
+  if (abs(convertedDistance) > 99 || currentDistance == -1) {
     drawInfiniteDistance();
     return;
   }
-  int absDistance = convertedDistance;
   if (convertedDistance < 0) {
     drawNegativeSign(distEval.colorRGB);
   }
-  absDistance=abs(convertedDistance);
-  if (absDistance < 10) {
-    drawFirstDigit(absDistance,distEval.colorRGB);
+  int16_t intDistance = abs(absDistance);
+  if (intDistance < 10) {
+    drawFirstDigit(intDistance,distEval.colorRGB);
     return;
   }
-  drawFirstDigit(absDistance / 10,distEval.colorRGB);  // Get the tens place
-  drawSecondDigit(absDistance % 10,distEval.colorRGB);  // Get the units place
+  drawFirstDigit(intDistance / 10,distEval.colorRGB);  // Get the tens place
+  drawSecondDigit(intDistance % 10,distEval.colorRGB);  // Get the units place
 };
 
 void drawDistanceWord(boolean useMetric,distanceEvaluation distEval) {
@@ -139,13 +143,16 @@ void drawDistanceWord(boolean useMetric,distanceEvaluation distEval) {
       uint16_t row;
       if (useMetric) {row = word_cm_9x3[y];} else {row = word_in_9x3[y];}
       bool pixel = getBit(row,7+x);
-      leds[ XYsafe(distanceWordCoord[0]+x,distanceWordCoord[1]+y)] = distEval.colorRGB;
+      if (pixel == 1) {
+        leds[ XYsafe(distanceWordCoord[0]+x,distanceWordCoord[1]+y)] = distEval.colorRGB;
+      }
     }
   }
 };
 
 void drawCarLogo(carInfoStruct currentCar) {
   // loop through columns and rows, getting the right pixel from the logo array
+  String logoLog;
   for (size_t x = 0; x < 10; x++)
   {
     for (size_t y = 0; y < 6; y++)
@@ -153,10 +160,35 @@ void drawCarLogo(carInfoStruct currentCar) {
       int16_t pixelColSet;
       if (x < 5) { pixelColSet = currentCar.carLogo[y*2];} else 
                  { pixelColSet = currentCar.carLogo[(y*2)+1];};
-      int pixelColor=getBit(pixelColSet,x % 5);
+      int pixelColorBit4 = getBit(pixelColSet, ((x % 5)*3) + 1);
+      int pixelColorBit2 = getBit(pixelColSet, ((x % 5)*3) + 2);
+      int pixelColorBit1 = getBit(pixelColSet, ((x % 5)*3) + 3); 
+      int pixelColor=(pixelColorBit4 * 4) + (pixelColorBit2 * 2) + pixelColorBit1;
+      if (!logoDebugged) {
+        logoLog = "x=";
+        logoLog += x;
+        logoLog += " y=";
+        logoLog += y;
+        logoLog += " 4=";
+        logoLog += pixelColorBit4;
+        logoLog += " 2=";
+        logoLog += pixelColorBit2;
+        logoLog += " 1=";
+        logoLog += pixelColorBit1;
+        logoLog += " dx=";
+        logoLog += pixelColor;
+        logoLog += " \n";
+        WebSerial.println(logoLog);
+        delay(300);
+      }
       CRGB pixelRGBColor = currentCar.logoColors[pixelColor];
       leds[ XYsafe(carLogoCoord[0]+x,carLogoCoord[1]+y)] = pixelRGBColor;
     }
+  }
+  if (!logoDebugged) {
+//    WebSerial.println("Logging entire logo contents in one string");
+//    WebSerial.println(logoLog);
+    logoDebugged = true;
   }
 };
 

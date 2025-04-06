@@ -4,7 +4,6 @@
 #include <WiFiClient.h>
 #include <ESPAsyncWebServer.h>
 #include <WebSerial.h>
-#include <ElegantOTA.h>
 #include <wificodes.h>
 #include <HCSR04.h>
 #include <OneWire.h>
@@ -14,6 +13,7 @@
 #include <camera.h>
 #include <parkassist.h>
 #include <FastLED.h>
+#include <PrettyOTA.h>
 
 // 
 // PIN LAYOUT
@@ -37,7 +37,7 @@
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
 
 carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 60, .maxFrontDistanceCm = 30, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 300,
+  { .targetFrontDistanceCm = 75, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 300,
      .carLogo = 
     {
       0b0001001001000000,
@@ -80,10 +80,11 @@ stateOpts curState = BASELINE;
 
 int secsToReset = 90;
 unsigned long camera_checking_millis = 0;
-int maxCameraCheckMillis = 5000;
+int maxCameraCheckMillis = 1000;
 unsigned long timer_started_millis = 0;
 
 AsyncWebServer serverOTA(80);
+PrettyOTA OTAUpdates;
 AsyncWebServer serverLog(81);
 AsyncWebServer serverCam(82);
 
@@ -105,24 +106,25 @@ boolean carFirstClearedSensor = false;
 boolean carDetected;
 boolean useMetric = false;
 
-unsigned long ota_progress_millis = 0;
-
-void onOTAStart() {
-  Serial.println("OTA update started!");
+void onOTAStart(NSPrettyOTA::UPDATE_MODE updateMode)
+{
+    WebSerial.println("OTA update started");
+    if(updateMode == NSPrettyOTA::UPDATE_MODE::FIRMWARE)
+        WebSerial.println("Mode: Firmware");
+    else if(updateMode == NSPrettyOTA::UPDATE_MODE::FILESYSTEM)
+        WebSerial.println("Mode: Filesystem");
 }
 
-void onOTAProgress(size_t current, size_t final) {
-  if (millis() - ota_progress_millis > 1000) {
-    ota_progress_millis = millis();
-    Serial.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
-  }
+void onOTAProgress(uint32_t currentSize, uint32_t totalSize)
+{
+    WebSerial.printf("OTA Progress Current: %u bytes, Total: %u bytes\n", currentSize, totalSize);
 }
 
 void onOTAEnd(bool success) {
   if (success) {
-    Serial.println("OTA update finished successfully!");
+    WebSerial.println("OTA update finished successfully!");
   } else {
-    Serial.println("There was an error during OTA update!");
+    WebSerial.println("There was an error during OTA update!");
   }
 }
 
@@ -145,21 +147,20 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
  
-  serverOTA.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Hi! This is ElegantOTA AsyncDemo.");
-  });
-
   serverLog.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "Hi! This is WebSerial demo. You can access the WebSerial interface at http://" + WiFi.localIP().toString() + "/webserial");
   });
  
-  ElegantOTA.begin(&serverOTA);    // Start ElegantOTA
-  ElegantOTA.onStart(onOTAStart);
-  ElegantOTA.onProgress(onOTAProgress);
-  ElegantOTA.onEnd(onOTAEnd);
-
   serverOTA.begin();
   Serial.println("OTA HTTP server started");
+
+  serverOTA.begin();
+  OTAUpdates.Begin(&serverOTA);
+  OTAUpdates.OverwriteAppVersion("1.0.0");
+  PRETTY_OTA_SET_CURRENT_BUILD_TIME_AND_DATE();
+  OTAUpdates.OnStart(onOTAStart);
+  OTAUpdates.OnProgress(onOTAProgress);
+  OTAUpdates.OnEnd(onOTAEnd);
 
   WebSerial.begin(&serverLog);
   WebSerial.onMessage([](uint8_t *data, size_t len) {
@@ -173,6 +174,7 @@ void setup() {
     }
     WebSerial.println(d);
   });
+  WebSerial.println("Starting Web Serial Log for Park Assist");
 
   serverLog.begin();
   tempSensors.begin();
@@ -196,18 +198,20 @@ distanceEvaluation evaluateDistance() {
     .colorCode = RED,
     .colorOffset = 0
   };
+  double fixedDistance = currentDistance;
+  if (currentDistance == -1) {fixedDistance = currentCar.sensorDistanceFromFrontCm;};
   if (digitalRead(IR_BREAK_SENSOR) == LOW) {
     carDetected = true;
     if (!carFirstDetected) {
       carFirstDetected = true;
-      carFirstDetectedDistanceFromFront = currentDistance;
+      carFirstDetectedDistanceFromFront = fixedDistance;
       WebSerial.print(F("First Detected Car at distance: "));
       WebSerial.println(carFirstDetectedDistanceFromFront);
     }
   } else {
     if (carDetected) {
       carFirstClearedSensor = true;
-      carFirstClearedSensorDistanceFromFront = currentDistance;
+      carFirstClearedSensorDistanceFromFront = fixedDistance;
       WebSerial.print(F("First Detected Car Cleared Sensor at distance: "));
       WebSerial.println(carFirstClearedSensorDistanceFromFront);
     }
@@ -218,18 +222,18 @@ distanceEvaluation evaluateDistance() {
     distEval.colorCode = YELLOW;
     // car is at 120cm, first detected car at 200cm, target = 90 --> 110 cm range from first detected to target
     // how far inside = 200-120 = 80cm, so 80/110 = 45% of range, offset should be 2
-    distEval.colorOffset = constrain(((carFirstDetectedDistanceFromFront - currentDistance) / (carFirstDetectedDistanceFromFront - currentCar.targetFrontDistanceCm))*yellowBoxMaxOffset,0,yellowBoxMaxOffset);
+    distEval.colorOffset = constrain(((carFirstDetectedDistanceFromFront - fixedDistance) / (carFirstDetectedDistanceFromFront - currentCar.targetFrontDistanceCm))*yellowBoxMaxOffset,0,yellowBoxMaxOffset);
   };
-  if (currentDistance < currentCar.targetFrontDistanceCm) {
+  if (fixedDistance < currentCar.targetFrontDistanceCm) {
     distEval.colorRGB = CRGB::Red;
     distEval.colorCode = RED;
     // car is at 80cm, target=90, max=60 --> 30 cm range from target to max
     // how far inside that range = 90-80 = 10cm, so using 30% of range, offset should be 1
-    distEval.colorOffset = constrain((((currentCar.targetFrontDistanceCm - currentDistance) / (currentCar.targetFrontDistanceCm - currentCar.maxFrontDistanceCm))*redBoxMaxOffset),0,redBoxMaxOffset);
+    distEval.colorOffset = constrain((((currentCar.targetFrontDistanceCm - fixedDistance) / (currentCar.targetFrontDistanceCm - currentCar.maxFrontDistanceCm))*redBoxMaxOffset),0,redBoxMaxOffset);
   } else {
     // car cleared sensor at 100cm, car is now at 95cm, target is 90 --> 10cm range from cleared->target
     // how far inside that range = 100-95 = 5cm/10cm --> offset = 2
-    distEval.colorOffset = constrain(((carFirstClearedSensorDistanceFromFront - currentDistance) / (carFirstClearedSensorDistanceFromFront - currentCar.targetFrontDistanceCm)*greenBoxMaxOffset),0,greenBoxMaxOffset);
+    distEval.colorOffset = constrain(((carFirstClearedSensorDistanceFromFront - fixedDistance) / (carFirstClearedSensorDistanceFromFront - currentCar.targetFrontDistanceCm)*greenBoxMaxOffset),0,greenBoxMaxOffset);
     distEval.colorRGB = CRGB::Green;
     distEval.colorCode = GREEN;
   }
@@ -246,7 +250,7 @@ void getCurrentData() {
 void displayCurrentData() {
   FastLED.clear();
   CRGB color;
-  drawDistance(currentDistance,useMetric,currentDistanceEvaluation);
+  drawDistance(currentDistance,useMetric,currentDistanceEvaluation,currentCar);
   drawDistanceWord(useMetric,currentDistanceEvaluation);
   drawCarLogo(currentCar);
   drawPictureGuide(currentDistanceEvaluation);
@@ -255,7 +259,6 @@ void displayCurrentData() {
 
 void loop() {
     static unsigned long last_print_time = millis();
-    ElegantOTA.loop();
     WebSerial.loop();
 
     switch (curState) {
@@ -306,16 +309,16 @@ void loop() {
     if ((unsigned long)(millis() - last_print_time) > 3000) {
         tempSensors.requestTemperatures(); 
         float temperatureC = tempSensors.getTempCByIndex(0);
-        WebSerial.print(temperatureC);
-        WebSerial.println(F("degrees C"));
+//        WebSerial.print(temperatureC);
+//        WebSerial.println(F("degrees C"));
         double distance = distanceSensor.measureDistanceCm(temperatureC);  
-        WebSerial.print(distance);
-        WebSerial.println(F("cm"));
+//        WebSerial.print(distance);
+//        WebSerial.println(F("cm"));
         last_print_time = millis();
         if (digitalRead(IR_BREAK_SENSOR) == LOW) {
-          WebSerial.println(F("IR SENSOR LINK BROKEN - CAR PRESENT"));
+//          WebSerial.println(F("IR SENSOR LINK BROKEN - CAR PRESENT"));
         } else {
-          WebSerial.println(F("IR SENSOR STILL CONNECTED - NO CAR"));
+//          WebSerial.println(F("IR SENSOR STILL CONNECTED - NO CAR"));
         }
     }
 }

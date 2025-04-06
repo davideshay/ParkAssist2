@@ -4,7 +4,7 @@
 void initLEDs();
 uint16_t XYsafe( uint8_t x, uint8_t y);
 uint16_t XY( uint8_t x, uint8_t y);
-void drawDistance(double currentDistance, boolean useMetric, distanceEvaluation distEval);
+void drawDistance(double currentDistance, boolean useMetric, distanceEvaluation distEval, carInfoStruct currentCar);
 void drawDistanceWord(boolean useMetric, distanceEvaluation distEval);
 void drawCarLogo(carInfoStruct car);
 void drawPictureGuide(distanceEvaluation distEval);
@@ -16,7 +16,7 @@ static const int greaterSignCoord[] = { 1,0};
 static const int firstDigitCoord[] = {3,0};
 static const int secondDigitCoord[] = {7,0};
 static const int distanceWordCoord[] = {1,6};
-static const int carLogoCoord[] = {1,1};
+static const int carLogoCoord[] = {1,10};
 static const int whiteBarTopCoord[] = {11,2};
 static const int whiteBarBottomCoord[] = {11,13};
 static const int redBoxTopLowestCoord[] = {12,2};
