@@ -37,21 +37,21 @@
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
 
 carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 75, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 300,
+  { .targetFrontDistanceCm = 82, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
      .carLogo = 
     {
-      0b0001001001000000,
-      0b0001000001001001,
-      0b0001000001000001,
-      0b0001000001000000,
-      0b0001001001000000,
-      0b0001000001000000,
-      0b0001001000000000,
-      0b0001000001001001,
-      0b0001000001000000,
-      0b0001000000000001,
-      0b0001000001000000,
-      0b0001000001001001
+      0b0100100100000000,
+      0b0100000100100100,
+      0b0100000100000100,
+      0b0100000100000000,
+      0b0100100100000000,
+      0b0100000100000000,
+      0b0100100000000000,
+      0b0100000100100100,
+      0b0100000100000000,
+      0b0100000000000100,
+      0b0100000100000000,
+      0b0100000100100100
     },
     .logoColors = {
       CRGB::Black,
@@ -82,6 +82,12 @@ int secsToReset = 90;
 unsigned long camera_checking_millis = 0;
 int maxCameraCheckMillis = 1000;
 unsigned long timer_started_millis = 0;
+unsigned long logging_millis = 0;
+unsigned long dist_check_millis = 0;
+const unsigned long time_between_dist_checks_millis = 60;
+const unsigned int maxSamples = 16;
+double distHistory[maxSamples] = {0};
+uint16_t numSamplesCollected = 0;
 
 AsyncWebServer serverOTA(80);
 PrettyOTA OTAUpdates;
@@ -105,6 +111,8 @@ double carFirstClearedSensorDistanceFromFront;
 boolean carFirstClearedSensor = false;
 boolean carDetected;
 boolean useMetric = false;
+
+boolean logging = false;
 
 void onOTAStart(NSPrettyOTA::UPDATE_MODE updateMode)
 {
@@ -189,29 +197,64 @@ void setup() {
   });
   serverCam.begin();
 
+  //TODO -- DELETE LATER
+  currentCar = defaultCar;
 }
+
+void logCurrentData() {
+  if (millis() - logging_millis < 500) {return;}
+  if (digitalRead(IR_BREAK_SENSOR) == LOW) {
+    WebSerial.println(F("IR SENSOR LINK BROKEN - CAR PRESENT"));
+  } else {
+    WebSerial.println(F("IR SENSOR STILL CONNECTED - NO CAR"));
+  }
+  WebSerial.print("cctcm=");
+  WebSerial.print(currentCar.targetFrontDistanceCm);
+  WebSerial.print(" dcm=");
+  WebSerial.print(currentDistance);
+  WebSerial.print(" dttcm=");
+  WebSerial.print(currentDistanceEvaluation.cmToTarget);
+  WebSerial.print(" dttin=");
+  WebSerial.print(currentDistanceEvaluation.inchesToTarget);
+  WebSerial.print(" dspdt=");
+  WebSerial.print(currentDistanceEvaluation.displayDistance);
+  WebSerial.print(" dspinf=");
+  WebSerial.print(currentDistanceEvaluation.displayInfinity);
+  WebSerial.print(" cc=");
+  WebSerial.print(currentDistanceEvaluation.colorCode);
+  WebSerial.print(" co=");
+  WebSerial.println(currentDistanceEvaluation.colorOffset);
+  logging_millis=millis();
+}
+
 
 distanceEvaluation evaluateDistance() {
   // TODO -- does not deal with lengthOffsets for other cars
   distanceEvaluation distEval = {
-    .colorRGB = CRGB::Red,
-    .colorCode = RED,
-    .colorOffset = 0
+    .colorRGB = CRGB::Blue,
+    .colorCode = BLUE,
+    .colorOffset = 0,
+    .displayInfinity = false,
+    .inchesToTarget = 0,
+    .cmToTarget = 0,
+    .displayDistance = 0
   };
-  double fixedDistance = currentDistance;
-  if (currentDistance == -1) {fixedDistance = currentCar.sensorDistanceFromFrontCm;};
+  double smoothedDistance = currentDistance;
+  if (currentDistance == -1) {
+    smoothedDistance = currentCar.sensorDistanceFromFrontCm;
+  };
   if (digitalRead(IR_BREAK_SENSOR) == LOW) {
     carDetected = true;
     if (!carFirstDetected) {
       carFirstDetected = true;
-      carFirstDetectedDistanceFromFront = fixedDistance;
+      carFirstDetectedDistanceFromFront = smoothedDistance;
       WebSerial.print(F("First Detected Car at distance: "));
       WebSerial.println(carFirstDetectedDistanceFromFront);
     }
   } else {
     if (carDetected) {
       carFirstClearedSensor = true;
-      carFirstClearedSensorDistanceFromFront = fixedDistance;
+      carFirstClearedSensorDistanceFromFront = smoothedDistance;
       WebSerial.print(F("First Detected Car Cleared Sensor at distance: "));
       WebSerial.println(carFirstClearedSensorDistanceFromFront);
     }
@@ -222,32 +265,78 @@ distanceEvaluation evaluateDistance() {
     distEval.colorCode = YELLOW;
     // car is at 120cm, first detected car at 200cm, target = 90 --> 110 cm range from first detected to target
     // how far inside = 200-120 = 80cm, so 80/110 = 45% of range, offset should be 2
-    distEval.colorOffset = constrain(((carFirstDetectedDistanceFromFront - fixedDistance) / (carFirstDetectedDistanceFromFront - currentCar.targetFrontDistanceCm))*yellowBoxMaxOffset,0,yellowBoxMaxOffset);
-  };
-  if (fixedDistance < currentCar.targetFrontDistanceCm) {
-    distEval.colorRGB = CRGB::Red;
-    distEval.colorCode = RED;
-    // car is at 80cm, target=90, max=60 --> 30 cm range from target to max
-    // how far inside that range = 90-80 = 10cm, so using 30% of range, offset should be 1
-    distEval.colorOffset = constrain((((currentCar.targetFrontDistanceCm - fixedDistance) / (currentCar.targetFrontDistanceCm - currentCar.maxFrontDistanceCm))*redBoxMaxOffset),0,redBoxMaxOffset);
+    distEval.colorOffset = constrain(((carFirstDetectedDistanceFromFront - smoothedDistance) / (carFirstDetectedDistanceFromFront - currentCar.targetFrontDistanceCm))*yellowBoxMaxOffset,0,yellowBoxMaxOffset);
   } else {
-    // car cleared sensor at 100cm, car is now at 95cm, target is 90 --> 10cm range from cleared->target
-    // how far inside that range = 100-95 = 5cm/10cm --> offset = 2
-    distEval.colorOffset = constrain(((carFirstClearedSensorDistanceFromFront - fixedDistance) / (carFirstClearedSensorDistanceFromFront - currentCar.targetFrontDistanceCm)*greenBoxMaxOffset),0,greenBoxMaxOffset);
-    distEval.colorRGB = CRGB::Green;
-    distEval.colorCode = GREEN;
+    if (smoothedDistance < currentCar.targetFrontDistanceCm) {
+      distEval.colorRGB = CRGB::Red;
+      distEval.colorCode = RED;
+      // car is at 80cm, target=90, max=60 --> 30 cm range from target to max
+      // how far inside that range = 90-80 = 10cm, so using 30% of range, offset should be 1
+      distEval.colorOffset = constrain((((currentCar.targetFrontDistanceCm - smoothedDistance) / (currentCar.targetFrontDistanceCm - currentCar.maxFrontDistanceCm))*redBoxMaxOffset),0,redBoxMaxOffset);
+    } else {
+      // car cleared sensor at 100cm, car is now at 95cm, target is 90 --> 10cm range from cleared->target
+      // how far inside that range = 100-95 = 5cm/10cm --> offset = 2
+      distEval.colorOffset = constrain(((carFirstClearedSensorDistanceFromFront - smoothedDistance) / (carFirstClearedSensorDistanceFromFront - currentCar.targetFrontDistanceCm)*greenBoxMaxOffset),0,greenBoxMaxOffset);
+      distEval.colorRGB = CRGB::Green;
+      distEval.colorCode = GREEN;
+    }  
+  }
+  distEval.cmToTarget = smoothedDistance - currentCar.targetFrontDistanceCm;
+  distEval.inchesToTarget = (distEval.cmToTarget / 2.54);
+  if (useMetric) {
+    if (distEval.cmToTarget > 99 || distEval.cmToTarget < -99) {
+      distEval.displayInfinity = true;}
+    else {
+      distEval.displayDistance = distEval.cmToTarget;
+    }
+  }
+  else {
+    if (distEval.inchesToTarget > 99 || distEval.inchesToTarget < -99) {
+      distEval.displayInfinity = true;}
+    else {
+      distEval.displayDistance = distEval.inchesToTarget;
+    }
   }
   return distEval;
 }
 
 void getCurrentData() {
+  if (millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
   tempSensors.requestTemperatures(); 
   currentTemp = tempSensors.getTempCByIndex(0);
-  currentDistance = distanceSensor.measureDistanceCm(currentTemp);  
+  double origDistance = distanceSensor.measureDistanceCm(currentTemp);
+  if (numSamplesCollected < 16) {
+    currentDistance = origDistance;
+    numSamplesCollected++;
+  }
+  for (unsigned int i = maxSamples - 1; i > 0; --i)
+  {
+    distHistory[i] = distHistory[i-1];
+  }
+  distHistory[0]=origDistance;
+  double sortedHistory[maxSamples] = {0};
+  std::copy(distHistory,distHistory + maxSamples,sortedHistory);
+  std::sort(sortedHistory,sortedHistory + maxSamples);
+  double q1 = (sortedHistory[3] + sortedHistory[4])/2;
+  double q3 = (sortedHistory[11] + sortedHistory[12])/2;
+  double iqr = q3 - q1;
+  double minDist = q1 - (1.5*iqr);
+  double maxDist = q3 + (1.5*iqr);
+  if (maxSamples >= 16) {
+    if (origDistance > maxDist) {
+      currentDistance = maxDist;
+    } else if (origDistance < minDist) {
+      currentDistance = minDist;
+    } else {
+      currentDistance = origDistance;
+    }  
+  }
   currentDistanceEvaluation = evaluateDistance();
+  dist_check_millis = millis();
 };
 
 void displayCurrentData() {
+  logCurrentData();
   FastLED.clear();
   CRGB color;
   drawDistance(currentDistance,useMetric,currentDistanceEvaluation,currentCar);
@@ -286,6 +375,8 @@ void loop() {
         curState = SHOWING_DATA;
         WebSerial.println(F("Car Detected. Showing Data..."));
         timer_started_millis = millis();
+        logging=true;
+        logging_millis = millis();
         break;
       case SHOWING_DATA:
         getCurrentData();
@@ -304,22 +395,43 @@ void loop() {
         carFirstDetectedDistanceFromFront = 0;
         carFirstClearedSensor = false;
         carFirstClearedSensorDistanceFromFront = 0;
+        logging=false;
+        numSamplesCollected = 0;
+        for (size_t i = 0; i < maxSamples; i++)
+        {
+          distHistory[i] = 0;
+        }
+        
     }
 
-    if ((unsigned long)(millis() - last_print_time) > 3000) {
-        tempSensors.requestTemperatures(); 
-        float temperatureC = tempSensors.getTempCByIndex(0);
-//        WebSerial.print(temperatureC);
-//        WebSerial.println(F("degrees C"));
-        double distance = distanceSensor.measureDistanceCm(temperatureC);  
-//        WebSerial.print(distance);
-//        WebSerial.println(F("cm"));
-        last_print_time = millis();
-        if (digitalRead(IR_BREAK_SENSOR) == LOW) {
-//          WebSerial.println(F("IR SENSOR LINK BROKEN - CAR PRESENT"));
-        } else {
-//          WebSerial.println(F("IR SENSOR STILL CONNECTED - NO CAR"));
-        }
+    if (((unsigned long)(millis() - last_print_time) > 1000) && logging) {
+        // getCurrentData();
+        // distanceEvaluation distEval = evaluateDistance();
+        // WebSerial.print(currentTemp);
+        // WebSerial.println(F("degrees C "));
+        // WebSerial.print(currentDistance);
+        // WebSerial.println(F("cm"));
+        // last_print_time = millis();
+        // if (digitalRead(IR_BREAK_SENSOR) == LOW) {
+        //   WebSerial.println(F("IR SENSOR LINK BROKEN - CAR PRESENT"));
+        // } else {
+        //   WebSerial.println(F("IR SENSOR STILL CONNECTED - NO CAR"));
+        // }
+        // WebSerial.print("cctcm=");
+        // WebSerial.print(currentCar.targetFrontDistanceCm);
+        // WebSerial.print(" dttcm=");
+        // WebSerial.print(distEval.cmToTarget);
+        // WebSerial.print(" dttin=");
+        // WebSerial.print(distEval.inchesToTarget);
+        // WebSerial.print(" dspdt=");
+        // WebSerial.print(distEval.displayDistance);
+        // WebSerial.print(" dspinf=");
+        // WebSerial.print(distEval.displayInfinity);
+        // WebSerial.print(" cc=");
+        // WebSerial.print(distEval.colorCode);
+        // WebSerial.print(" co=");
+        // WebSerial.println(distEval.colorOffset);
+
     }
 }
 

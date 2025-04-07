@@ -20,11 +20,12 @@ const bool    kMatrixVertical = false;
 #define NUM_LEDS (kMatrixWidth * kMatrixHeight)
 CRGB leds_plus_safety_pixel[ NUM_LEDS + 1];
 CRGB* const leds( leds_plus_safety_pixel + 1);
-boolean logoDebugged = false;
 
 void initLEDs() {
     FastLED.addLeds<CHIPSET, LED_PANEL_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalSMD5050);
     FastLED.setBrightness( BRIGHTNESS );
+    FastLED.clear();
+    FastLED.show();
 }
 
 uint16_t XY( uint8_t x, uint8_t y)
@@ -114,19 +115,14 @@ void drawNegativeSign(CRGB color) {
 }
 
 void drawDistance(double currentDistance,boolean useMetric, distanceEvaluation distEval, carInfoStruct currentCar) {
-  double convertedDistance = currentDistance;
-  double absDistance = currentDistance - currentCar.targetFrontDistanceCm;
-  if (!useMetric) {
-    absDistance = absDistance / 2.54;
-  }
-  if (abs(convertedDistance) > 99 || currentDistance == -1) {
+  if (distEval.displayInfinity) {
     drawInfiniteDistance();
     return;
   }
-  if (convertedDistance < 0) {
+  if (distEval.displayDistance < 0) {
     drawNegativeSign(distEval.colorRGB);
   }
-  int16_t intDistance = abs(absDistance);
+  int16_t intDistance = abs(distEval.displayDistance);
   if (intDistance < 10) {
     drawFirstDigit(intDistance,distEval.colorRGB);
     return;
@@ -164,31 +160,9 @@ void drawCarLogo(carInfoStruct currentCar) {
       int pixelColorBit2 = getBit(pixelColSet, ((x % 5)*3) + 2);
       int pixelColorBit1 = getBit(pixelColSet, ((x % 5)*3) + 3); 
       int pixelColor=(pixelColorBit4 * 4) + (pixelColorBit2 * 2) + pixelColorBit1;
-      if (!logoDebugged) {
-        logoLog = "x=";
-        logoLog += x;
-        logoLog += " y=";
-        logoLog += y;
-        logoLog += " 4=";
-        logoLog += pixelColorBit4;
-        logoLog += " 2=";
-        logoLog += pixelColorBit2;
-        logoLog += " 1=";
-        logoLog += pixelColorBit1;
-        logoLog += " dx=";
-        logoLog += pixelColor;
-        logoLog += " \n";
-        WebSerial.println(logoLog);
-        delay(300);
-      }
       CRGB pixelRGBColor = currentCar.logoColors[pixelColor];
       leds[ XYsafe(carLogoCoord[0]+x,carLogoCoord[1]+y)] = pixelRGBColor;
     }
-  }
-  if (!logoDebugged) {
-//    WebSerial.println("Logging entire logo contents in one string");
-//    WebSerial.println(logoLog);
-    logoDebugged = true;
   }
 };
 

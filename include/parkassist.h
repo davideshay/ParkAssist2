@@ -13,7 +13,7 @@ struct carInfoStruct {
   };
 
 enum colorCodes {
-    RED,YELLOW,GREEN
+    RED,YELLOW,GREEN,WHITE,BLUE
   };
 
 // return values from evaluate distance function
@@ -23,6 +23,10 @@ struct distanceEvaluation {
     CRGB colorRGB;
     colorCodes colorCode;
     int colorOffset;
+    bool displayInfinity;
+    int16_t inchesToTarget;
+    int16_t cmToTarget;
+    int8_t displayDistance;
 };
 
 #endif
