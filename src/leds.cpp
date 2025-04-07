@@ -124,7 +124,7 @@ void drawDistance(double currentDistance,boolean useMetric, distanceEvaluation d
   }
   int16_t intDistance = abs(distEval.displayDistance);
   if (intDistance < 10) {
-    drawFirstDigit(intDistance,distEval.colorRGB);
+    drawSecondDigit(intDistance,distEval.colorRGB);
     return;
   }
   drawFirstDigit(intDistance / 10,distEval.colorRGB);  // Get the tens place

@@ -80,13 +80,15 @@ enum stateOpts {
 
 stateOpts curState = BASELINE;
 
-int secsToReset = 90;
+int secsToReset = 60;
 unsigned long camera_checking_millis = 0;
 int maxCameraCheckMillis = 1000;
 unsigned long timer_started_millis = 0;
 unsigned long logging_millis = 0;
 unsigned long dist_check_millis = 0;
 const unsigned long time_between_dist_checks_millis = 60;
+unsigned long temp_check_millis = 0;
+const unsigned long time_between_temp_checks_millis = 60000;
 const unsigned int maxSamples = 16;
 double distHistory[maxSamples] = {0};
 uint16_t numSamplesCollected = 0;
@@ -96,6 +98,8 @@ PrettyOTA OTAUpdates;
 AsyncWebServer serverLog(81);
 AsyncWebServer serverCam(82);
 AsyncWebServer serverLogDetail(83);
+WiFiClient logClient;
+IPAddress logTarget = IPAddress(10,10,1,134);
 
 UltraSonicDistanceSensor distanceSensor(DIST_SENSOR_TRIGGER, DIST_SENSOR_ECHO);  // Initialize sensor that uses digital pins 42 and 41
 
@@ -115,8 +119,9 @@ boolean carFirstClearedSensor = false;
 boolean carDetected;
 boolean useMetric = false;
 
-boolean logging = false;
 boolean fileLogging = false;
+boolean netLogging = true;
+boolean webLogging = true;
 #define FORMAT_LITTLEFS_IF_FAILED true
 File logFile;
 boolean okToLog = true;
@@ -159,6 +164,12 @@ void openLogFileRead() {
     WebSerial.println("Unable to open log file for reading");
     okToLog = false;
   }
+}
+
+void logData(String message, bool includeWeb = true) {
+  if (webLogging && includeWeb) {WebSerial.println(message);}
+  if (fileLogging && okToLog) {logFile.println(message);}
+  if (netLogging) {logClient.println(message);}
 }
 
 void setup() {
@@ -205,10 +216,34 @@ void setup() {
     for(size_t i = 0; i < len; i++){
       d += char(data[i]);
     }
+    if (d == "move") {
+      WebSerial.println("Detected move command, setting to car detected");
+      curState = CAR_TYPE_DETECTED;
+    } else if (d.startsWith("changeip") && netLogging) {
+      String newIPs = d.substring(9);
+      WebSerial.println("Changing netlogging IP address to " + newIPs );
+      IPAddress newIP;
+      newIP.fromString(newIPs);
+      logClient.stop();
+      if (!logClient.connect(newIP,10000)) {
+        WebSerial.println("Error changing netlogging IP address to " + newIPs);
+      } else {
+        logClient.println("Changed netlogging to this IP address: "+newIPs);
+      }
+    }
     WebSerial.println(d);
   });
   delay(1000);
   WebSerial.println("Starting Web Serial Log for Park Assist");
+
+  if (netLogging) {
+    if (!logClient.connect(logTarget, 10000)) {      
+      WebSerial.println("Connection to host failed");
+    }
+    logClient.println("TCP Logging Initiated");
+    WebSerial.println("TCP Logging Initiated");
+  }
+
 
   serverLog.begin();
   tempSensors.begin();
@@ -250,10 +285,9 @@ void setup() {
 
 void logCurrentData() {
   if (millis() - logging_millis < 500) {return;}
+  boolean carPresent = false;
   if (digitalRead(IR_BREAK_SENSOR) == LOW) {
-    WebSerial.println(F("IR SENSOR LINK BROKEN - CAR PRESENT"));
-  } else {
-    WebSerial.println(F("IR SENSOR STILL CONNECTED - NO CAR"));
+    carPresent = true;
   }
   String logLine;
   logLine = "cctcm=";
@@ -268,13 +302,17 @@ void logCurrentData() {
   logLine += currentDistanceEvaluation.displayDistance;
   logLine += " dspinf=";
   logLine += currentDistanceEvaluation.displayInfinity;
+  if (carPresent) {
+    logLine += " CARPRES";
+  } else {
+    logLine += " NOCAR";
+  }
   logLine += " cc=";
   logLine += currentDistanceEvaluation.colorCode;
   logLine += " co=";
   logLine += currentDistanceEvaluation.colorOffset;
-  WebSerial.println(logLine);
+  logData(logLine,false);
   logging_millis=millis();
-//  if (okToLog) {logFile.println(logLine);}
 }
 
 
@@ -298,15 +336,17 @@ distanceEvaluation evaluateDistance() {
     if (!carFirstDetected) {
       carFirstDetected = true;
       carFirstDetectedDistanceFromFront = smoothedDistance;
-      WebSerial.print(F("First Detected Car at distance: "));
-      WebSerial.println(carFirstDetectedDistanceFromFront);
+      String msg = "First Detected Car at distance: ";
+      msg += carFirstDetectedDistanceFromFront;
+      logData(msg);
     }
   } else {
     if (carDetected) {
       carFirstClearedSensor = true;
       carFirstClearedSensorDistanceFromFront = smoothedDistance;
-      WebSerial.print(F("First Detected Car Cleared Sensor at distance: "));
-      WebSerial.println(carFirstClearedSensorDistanceFromFront);
+      String msg = "First Detected Car Cleared Sensor at distance: ";
+      msg += carFirstClearedSensorDistanceFromFront;
+      logData(msg);
     }
     carDetected = false;
   }
@@ -350,7 +390,8 @@ distanceEvaluation evaluateDistance() {
   return distEval;
 }
 
-void logCurrentData(double od,double cd,double mind, double maxd,double dh[maxSamples],double sh[maxSamples]) {
+void logDetailData(double od,double cd,double mind, double maxd,double dh[maxSamples],double sh[maxSamples]) {
+  if (!fileLogging && !webLogging && !netLogging) {return;}
   String logLine;
   logLine = "ms=";
   logLine += millis();
@@ -374,16 +415,21 @@ void logCurrentData(double od,double cd,double mind, double maxd,double dh[maxSa
     logLine += dh[i];
     logLine += ",";
   }
-  logFile.println(logLine);
+  logData(logLine,false);
+}
+
+void getTemperature() {
+  tempSensors.requestTemperatures(); 
+  currentTemp = tempSensors.getTempCByIndex(0);
 }
 
 void getCurrentData() {
   if (millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
-  tempSensors.requestTemperatures(); 
-  currentTemp = tempSensors.getTempCByIndex(0);
   double origDistance = distanceSensor.measureDistanceCm(currentTemp);
+  double corrDistance = origDistance;
+  if (corrDistance == -1) {corrDistance = currentCar.sensorDistanceFromFrontCm;}
   if (numSamplesCollected < 16) {
-    currentDistance = origDistance;
+    currentDistance = corrDistance;
     numSamplesCollected++;
   }
   for (unsigned int i = maxSamples - 1; i > 0; --i)
@@ -393,24 +439,22 @@ void getCurrentData() {
   distHistory[0]=origDistance;
   double sortedHistory[maxSamples] = {0};
   std::copy(distHistory,distHistory + maxSamples,sortedHistory);
-  std::sort(sortedHistory,sortedHistory + maxSamples);
+  std::sort(std::begin(sortedHistory),std::end(sortedHistory));
   double q1 = (sortedHistory[3] + sortedHistory[4])/2;
   double q3 = (sortedHistory[11] + sortedHistory[12])/2;
   double iqr = q3 - q1;
   double minDist = q1 - (1.5*iqr);
   double maxDist = q3 + (1.5*iqr);
   if (numSamplesCollected >= 16) {
-    if (origDistance > maxDist) {
+    if (corrDistance > maxDist) {
       currentDistance = maxDist;
-    } else if (origDistance < minDist) {
+    } else if (corrDistance < minDist) {
       currentDistance = minDist;
     } else {
-      currentDistance = origDistance;
+      currentDistance = corrDistance;
     }  
   }
-  if (okToLog && fileLogging) {
-    logCurrentData(origDistance,currentDistance,minDist,maxDist,distHistory,sortedHistory);
-  }
+  logDetailData(origDistance,currentDistance,minDist,maxDist,distHistory,sortedHistory);
   currentDistanceEvaluation = evaluateDistance();
   dist_check_millis = millis();
 };
@@ -426,14 +470,33 @@ void displayCurrentData() {
   FastLED.show();
 }
 
+void resetBaseline() {
+  FastLED.clear();
+  FastLED.show();
+  curState = BASELINE;
+  carFirstDetected = false;
+  carFirstDetectedDistanceFromFront = 0;
+  carFirstClearedSensor = false;
+  carFirstClearedSensorDistanceFromFront = 0;
+  numSamplesCollected = 0;
+  for (size_t i = 0; i < maxSamples; i++)
+  {
+    distHistory[i] = 0;
+  }
+  logFile.close();
+}
+
 void loop() {
-    static unsigned long last_print_time = millis();
     WebSerial.loop();
+    if (millis() - temp_check_millis > time_between_temp_checks_millis) {
+      getTemperature();
+      temp_check_millis = millis();
+    }
 
     switch (curState) {
       case BASELINE:
         if (digitalRead(IR_BREAK_SENSOR) == LOW) {
-          WebSerial.println(F("IR Sensor Broken from default. Car Present"));
+          logData("IR Sensor Broken from default. Car Present");
           timer_started_millis = millis();
           carDetected = true;
           curState = CAR_PRESENT;
@@ -443,77 +506,33 @@ void loop() {
       case CAR_PRESENT:
         curState = DETECTING_CAR_TYPE;
         camera_checking_millis = millis();
-        WebSerial.println(F("Now Detecting Car Type..."));
+        logData("Now Detecting Car Type...");
         break;
       case DETECTING_CAR_TYPE:
         if (millis() - camera_checking_millis > maxCameraCheckMillis) {
-          WebSerial.println(F("Car Detection Timeout, set to default"));
+          logData("Car Detection Timeout, set to default");
           currentCar = defaultCar;
           curState = CAR_TYPE_DETECTED;
         }
         break;
       case CAR_TYPE_DETECTED:
         curState = SHOWING_DATA;
-        WebSerial.println(F("Car Detected. Showing Data..."));
+        logData("Car Detected. Showing Data...");
         timer_started_millis = millis();
-        logging=true;
         logging_millis = millis();
         break;
       case SHOWING_DATA:
         getCurrentData();
         displayCurrentData();
         if (((millis() - timer_started_millis) > (unsigned long)(secsToReset * 1000))  && !carDetected) {
-            WebSerial.println(F("Timer expired and no car Detected"));
+            logData("Timer expired and no car Detected");
             curState = TIMER_EXPIRED;
         }
         break;
       case TIMER_EXPIRED:
-        WebSerial.println(F("Timer expired, turning off display and resetting to baseline"));
-        FastLED.clear();
-        FastLED.show();
-        curState = BASELINE;
-        carFirstDetected = false;
-        carFirstDetectedDistanceFromFront = 0;
-        carFirstClearedSensor = false;
-        carFirstClearedSensorDistanceFromFront = 0;
-        logging=false;
-        numSamplesCollected = 0;
-        for (size_t i = 0; i < maxSamples; i++)
-        {
-          distHistory[i] = 0;
-        }
-        logFile.close();
-        
+        logData("Timer expired, turning off display and resetting to baseline");
+        resetBaseline();        
     }
 
-    if (((unsigned long)(millis() - last_print_time) > 1000) && logging) {
-        // getCurrentData();
-        // distanceEvaluation distEval = evaluateDistance();
-        // WebSerial.print(currentTemp);
-        // WebSerial.println(F("degrees C "));
-        // WebSerial.print(currentDistance);
-        // WebSerial.println(F("cm"));
-        // last_print_time = millis();
-        // if (digitalRead(IR_BREAK_SENSOR) == LOW) {
-        //   WebSerial.println(F("IR SENSOR LINK BROKEN - CAR PRESENT"));
-        // } else {
-        //   WebSerial.println(F("IR SENSOR STILL CONNECTED - NO CAR"));
-        // }
-        // WebSerial.print("cctcm=");
-        // WebSerial.print(currentCar.targetFrontDistanceCm);
-        // WebSerial.print(" dttcm=");
-        // WebSerial.print(distEval.cmToTarget);
-        // WebSerial.print(" dttin=");
-        // WebSerial.print(distEval.inchesToTarget);
-        // WebSerial.print(" dspdt=");
-        // WebSerial.print(distEval.displayDistance);
-        // WebSerial.print(" dspinf=");
-        // WebSerial.print(distEval.displayInfinity);
-        // WebSerial.print(" cc=");
-        // WebSerial.print(distEval.colorCode);
-        // WebSerial.print(" co=");
-        // WebSerial.println(distEval.colorOffset);
-
-    }
 }
 

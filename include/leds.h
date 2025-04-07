@@ -11,8 +11,8 @@ void drawPictureGuide(distanceEvaluation distEval);
 
 // constant coordinates to show specific features {X, Y} == 
 
-static const int negSignCoord[] = { 2,0};
-static const int greaterSignCoord[] = { 1,0};
+static const int negSignCoord[] = { 0,2};
+static const int greaterSignCoord[] = { 0,1};
 static const int firstDigitCoord[] = {3,0};
 static const int secondDigitCoord[] = {7,0};
 static const int distanceWordCoord[] = {1,6};
