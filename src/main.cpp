@@ -16,6 +16,7 @@
 #include <PrettyOTA.h>
 #include "FS.h"
 #include <LittleFS.h>
+#include <SimpleKalmanFilter.h>
 
 // 
 // PIN LAYOUT
@@ -92,6 +93,7 @@ const unsigned long time_between_temp_checks_millis = 60000;
 const unsigned int maxSamples = 16;
 double distHistory[maxSamples] = {0};
 uint16_t numSamplesCollected = 0;
+SimpleKalmanFilter kalmanFilter(75,75,3);
 
 AsyncWebServer serverOTA(80);
 PrettyOTA OTAUpdates;
@@ -390,7 +392,7 @@ distanceEvaluation evaluateDistance() {
   return distEval;
 }
 
-void logDetailData(double od,double cd,double mind, double maxd,double dh[maxSamples],double sh[maxSamples]) {
+void logDetailData(double od,double cd,float ed,double mind, double maxd,double dh[maxSamples],double sh[maxSamples]) {
   if (!fileLogging && !webLogging && !netLogging) {return;}
   String logLine;
   logLine = "ms=";
@@ -399,6 +401,8 @@ void logDetailData(double od,double cd,double mind, double maxd,double dh[maxSam
   logLine += od;
   logLine += " cd=";
   logLine += cd;
+  logLine += " ed=";
+  logLine += ed;
   logLine += " mind=";
   logLine += mind;
   logLine += " maxd=";
@@ -412,7 +416,7 @@ void logDetailData(double od,double cd,double mind, double maxd,double dh[maxSam
   logLine += " sh=";
   for (size_t i = 0; i < maxSamples; i++)
   {
-    logLine += dh[i];
+    logLine += sh[i];
     logLine += ",";
   }
   logData(logLine,false);
@@ -428,6 +432,7 @@ void getCurrentData() {
   double origDistance = distanceSensor.measureDistanceCm(currentTemp);
   double corrDistance = origDistance;
   if (corrDistance == -1) {corrDistance = currentCar.sensorDistanceFromFrontCm;}
+  float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
   if (numSamplesCollected < 16) {
     currentDistance = corrDistance;
     numSamplesCollected++;
@@ -454,7 +459,7 @@ void getCurrentData() {
       currentDistance = corrDistance;
     }  
   }
-  logDetailData(origDistance,currentDistance,minDist,maxDist,distHistory,sortedHistory);
+  logDetailData(origDistance,currentDistance,estimatedDistance,minDist,maxDist,distHistory,sortedHistory);
   currentDistanceEvaluation = evaluateDistance();
   dist_check_millis = millis();
 };
