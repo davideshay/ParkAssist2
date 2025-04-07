@@ -14,6 +14,8 @@
 #include <parkassist.h>
 #include <FastLED.h>
 #include <PrettyOTA.h>
+#include "FS.h"
+#include <LittleFS.h>
 
 // 
 // PIN LAYOUT
@@ -37,7 +39,7 @@
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
 
 carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 82, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
+  { .targetFrontDistanceCm = 77, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
      .carLogo = 
     {
       0b0100100100000000,
@@ -93,6 +95,7 @@ AsyncWebServer serverOTA(80);
 PrettyOTA OTAUpdates;
 AsyncWebServer serverLog(81);
 AsyncWebServer serverCam(82);
+AsyncWebServer serverLogDetail(83);
 
 UltraSonicDistanceSensor distanceSensor(DIST_SENSOR_TRIGGER, DIST_SENSOR_ECHO);  // Initialize sensor that uses digital pins 42 and 41
 
@@ -113,6 +116,10 @@ boolean carDetected;
 boolean useMetric = false;
 
 boolean logging = false;
+boolean fileLogging = false;
+#define FORMAT_LITTLEFS_IF_FAILED true
+File logFile;
+boolean okToLog = true;
 
 void onOTAStart(NSPrettyOTA::UPDATE_MODE updateMode)
 {
@@ -133,6 +140,24 @@ void onOTAEnd(bool success) {
     WebSerial.println("OTA update finished successfully!");
   } else {
     WebSerial.println("There was an error during OTA update!");
+  }
+}
+
+void openLogFileAppend() {
+  if (fileLogging) {
+    logFile = LittleFS.open("/logfile.txt", FILE_APPEND);
+    if (!logFile) {
+      WebSerial.println("Unable to open log file for writing");
+      okToLog = false;
+    }  
+  }
+}
+
+void openLogFileRead() {  
+  logFile = LittleFS.open("/logfile.txt", FILE_READ);
+  if (!logFile) {
+    WebSerial.println("Unable to open log file for reading");
+    okToLog = false;
   }
 }
 
@@ -182,6 +207,7 @@ void setup() {
     }
     WebSerial.println(d);
   });
+  delay(1000);
   WebSerial.println("Starting Web Serial Log for Park Assist");
 
   serverLog.begin();
@@ -197,6 +223,27 @@ void setup() {
   });
   serverCam.begin();
 
+  if (fileLogging) {
+    if (!LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)) {
+      WebSerial.println("Unable to initialize LittleFS");
+      okToLog = false;
+    } else {
+      LittleFS.remove("/logfile.txt");
+      logFile = LittleFS.open("/logfile.txt", FILE_APPEND);
+      openLogFileAppend();
+    }  
+  }
+
+  // Handle the download button
+  serverLogDetail.on("/download", HTTP_GET, [](AsyncWebServerRequest *request){
+    logFile.close();
+    openLogFileRead();
+    request->send(LittleFS, "/logfile.txt", String(),false);
+    logFile.close();
+    openLogFileAppend();
+  });
+  serverLogDetail.begin();
+
   //TODO -- DELETE LATER
   currentCar = defaultCar;
 }
@@ -208,23 +255,26 @@ void logCurrentData() {
   } else {
     WebSerial.println(F("IR SENSOR STILL CONNECTED - NO CAR"));
   }
-  WebSerial.print("cctcm=");
-  WebSerial.print(currentCar.targetFrontDistanceCm);
-  WebSerial.print(" dcm=");
-  WebSerial.print(currentDistance);
-  WebSerial.print(" dttcm=");
-  WebSerial.print(currentDistanceEvaluation.cmToTarget);
-  WebSerial.print(" dttin=");
-  WebSerial.print(currentDistanceEvaluation.inchesToTarget);
-  WebSerial.print(" dspdt=");
-  WebSerial.print(currentDistanceEvaluation.displayDistance);
-  WebSerial.print(" dspinf=");
-  WebSerial.print(currentDistanceEvaluation.displayInfinity);
-  WebSerial.print(" cc=");
-  WebSerial.print(currentDistanceEvaluation.colorCode);
-  WebSerial.print(" co=");
-  WebSerial.println(currentDistanceEvaluation.colorOffset);
+  String logLine;
+  logLine = "cctcm=";
+  logLine += currentCar.targetFrontDistanceCm;
+  logLine += " dcm=";
+  logLine += currentDistance;
+  logLine += " dttcm=";
+  logLine += currentDistanceEvaluation.cmToTarget;
+  logLine += " dttin=";
+  logLine += currentDistanceEvaluation.inchesToTarget;
+  logLine += " dspdt=";
+  logLine += currentDistanceEvaluation.displayDistance;
+  logLine += " dspinf=";
+  logLine += currentDistanceEvaluation.displayInfinity;
+  logLine += " cc=";
+  logLine += currentDistanceEvaluation.colorCode;
+  logLine += " co=";
+  logLine += currentDistanceEvaluation.colorOffset;
+  WebSerial.println(logLine);
   logging_millis=millis();
+//  if (okToLog) {logFile.println(logLine);}
 }
 
 
@@ -300,6 +350,33 @@ distanceEvaluation evaluateDistance() {
   return distEval;
 }
 
+void logCurrentData(double od,double cd,double mind, double maxd,double dh[maxSamples],double sh[maxSamples]) {
+  String logLine;
+  logLine = "ms=";
+  logLine += millis();
+  logLine += " od=";
+  logLine += od;
+  logLine += " cd=";
+  logLine += cd;
+  logLine += " mind=";
+  logLine += mind;
+  logLine += " maxd=";
+  logLine += maxd;
+  logLine += " dh=";
+  for (size_t i = 0; i < maxSamples; i++)
+  {
+    logLine += dh[i];
+    logLine += ",";
+  }
+  logLine += " sh=";
+  for (size_t i = 0; i < maxSamples; i++)
+  {
+    logLine += dh[i];
+    logLine += ",";
+  }
+  logFile.println(logLine);
+}
+
 void getCurrentData() {
   if (millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
   tempSensors.requestTemperatures(); 
@@ -322,7 +399,7 @@ void getCurrentData() {
   double iqr = q3 - q1;
   double minDist = q1 - (1.5*iqr);
   double maxDist = q3 + (1.5*iqr);
-  if (maxSamples >= 16) {
+  if (numSamplesCollected >= 16) {
     if (origDistance > maxDist) {
       currentDistance = maxDist;
     } else if (origDistance < minDist) {
@@ -330,6 +407,9 @@ void getCurrentData() {
     } else {
       currentDistance = origDistance;
     }  
+  }
+  if (okToLog && fileLogging) {
+    logCurrentData(origDistance,currentDistance,minDist,maxDist,distHistory,sortedHistory);
   }
   currentDistanceEvaluation = evaluateDistance();
   dist_check_millis = millis();
@@ -357,6 +437,7 @@ void loop() {
           timer_started_millis = millis();
           carDetected = true;
           curState = CAR_PRESENT;
+          openLogFileAppend();
         }
         break;
       case CAR_PRESENT:
@@ -401,6 +482,7 @@ void loop() {
         {
           distHistory[i] = 0;
         }
+        logFile.close();
         
     }
 
