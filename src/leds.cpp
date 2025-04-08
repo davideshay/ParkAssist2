@@ -4,7 +4,7 @@
 #include <WebSerial.h>
 #include <leds.h>
 
-#define COLOR_ORDER RGB
+#define COLOR_ORDER GRB
 #define CHIPSET     WS2812
 #define BRIGHTNESS 64
 
@@ -20,6 +20,8 @@ const bool    kMatrixVertical = false;
 #define NUM_LEDS (kMatrixWidth * kMatrixHeight)
 CRGB leds_plus_safety_pixel[ NUM_LEDS + 1];
 CRGB* const leds( leds_plus_safety_pixel + 1);
+
+unsigned long draw_log_millis = 0;
 
 void initLEDs() {
     FastLED.addLeds<CHIPSET, LED_PANEL_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalSMD5050);
@@ -101,12 +103,12 @@ void drawSecondDigit(int digit, CRGB color) {
   drawADigit(digit,secondDigitCoord[0],secondDigitCoord[1],color);  
 };
 
-void drawInfiniteDistance() {
-    drawFirstDigit(9,CRGB::White);
-    drawSecondDigit(9,CRGB::White);
-    leds[ XYsafe(greaterSignCoord[0],greaterSignCoord[1])] = CRGB::White;
-    leds[ XYsafe(greaterSignCoord[0]+1,greaterSignCoord[1]+1)] = CRGB::White;
-    leds[ XYsafe(greaterSignCoord[0],greaterSignCoord[1]+2)] = CRGB::White;
+void drawInfiniteDistance(CRGB color) {
+    drawFirstDigit(9,color);
+    drawSecondDigit(9,color);
+    leds[ XYsafe(greaterSignCoord[0],greaterSignCoord[1])] = color;
+    leds[ XYsafe(greaterSignCoord[0]+1,greaterSignCoord[1]+1)] = color;
+    leds[ XYsafe(greaterSignCoord[0],greaterSignCoord[1]+2)] = color;
 };
 
 void drawNegativeSign(CRGB color) {
@@ -115,8 +117,22 @@ void drawNegativeSign(CRGB color) {
 }
 
 void drawDistance(double currentDistance,boolean useMetric, distanceEvaluation distEval, carInfoStruct currentCar) {
+  if (millis() - draw_log_millis > 500) {
+    String msg = "colorcode=";
+    msg += distEval.colorCode;
+    msg += " colorRGB=";
+    msg += uint8_t(distEval.colorRGB.r);
+    msg += ",";
+    msg += uint8_t(distEval.colorRGB.g);
+    msg += ",";
+    msg += uint8_t(distEval.colorRGB.b);
+    msg += " intotarg=";
+    msg += distEval.inchesToTarget;
+    WebSerial.println(msg);
+    draw_log_millis = millis();
+  }
   if (distEval.displayInfinity) {
-    drawInfiniteDistance();
+    drawInfiniteDistance(distEval.colorRGB);
     return;
   }
   if (distEval.displayDistance < 0) {

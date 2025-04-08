@@ -40,7 +40,7 @@
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
 
 carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 77, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
+  { .targetFrontDistanceCm = 70, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
      .carLogo = 
     {
       0b0100100100000000,
@@ -101,7 +101,7 @@ AsyncWebServer serverLog(81);
 AsyncWebServer serverCam(82);
 AsyncWebServer serverLogDetail(83);
 WiFiClient logClient;
-IPAddress logTarget = IPAddress(10,10,1,134);
+IPAddress logTarget = IPAddress(10,10,1,136);
 
 UltraSonicDistanceSensor distanceSensor(DIST_SENSOR_TRIGGER, DIST_SENSOR_ECHO);  // Initialize sensor that uses digital pins 42 and 41
 
@@ -313,10 +313,9 @@ void logCurrentData() {
   logLine += currentDistanceEvaluation.colorCode;
   logLine += " co=";
   logLine += currentDistanceEvaluation.colorOffset;
-  logData(logLine,false);
+  logData(logLine,true);
   logging_millis=millis();
 }
-
 
 distanceEvaluation evaluateDistance() {
   // TODO -- does not deal with lengthOffsets for other cars
@@ -392,7 +391,7 @@ distanceEvaluation evaluateDistance() {
   return distEval;
 }
 
-void logDetailData(double od,double cd,float ed,double mind, double maxd,double dh[maxSamples],double sh[maxSamples]) {
+void logDetailData(double od,double cd,float ed) {
   if (!fileLogging && !webLogging && !netLogging) {return;}
   String logLine;
   logLine = "ms=";
@@ -403,22 +402,6 @@ void logDetailData(double od,double cd,float ed,double mind, double maxd,double 
   logLine += cd;
   logLine += " ed=";
   logLine += ed;
-  logLine += " mind=";
-  logLine += mind;
-  logLine += " maxd=";
-  logLine += maxd;
-  logLine += " dh=";
-  for (size_t i = 0; i < maxSamples; i++)
-  {
-    logLine += dh[i];
-    logLine += ",";
-  }
-  logLine += " sh=";
-  for (size_t i = 0; i < maxSamples; i++)
-  {
-    logLine += sh[i];
-    logLine += ",";
-  }
   logData(logLine,false);
 }
 
@@ -433,33 +416,8 @@ void getCurrentData() {
   double corrDistance = origDistance;
   if (corrDistance == -1) {corrDistance = currentCar.sensorDistanceFromFrontCm;}
   float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
-  if (numSamplesCollected < 16) {
-    currentDistance = corrDistance;
-    numSamplesCollected++;
-  }
-  for (unsigned int i = maxSamples - 1; i > 0; --i)
-  {
-    distHistory[i] = distHistory[i-1];
-  }
-  distHistory[0]=origDistance;
-  double sortedHistory[maxSamples] = {0};
-  std::copy(distHistory,distHistory + maxSamples,sortedHistory);
-  std::sort(std::begin(sortedHistory),std::end(sortedHistory));
-  double q1 = (sortedHistory[3] + sortedHistory[4])/2;
-  double q3 = (sortedHistory[11] + sortedHistory[12])/2;
-  double iqr = q3 - q1;
-  double minDist = q1 - (1.5*iqr);
-  double maxDist = q3 + (1.5*iqr);
-  if (numSamplesCollected >= 16) {
-    if (corrDistance > maxDist) {
-      currentDistance = maxDist;
-    } else if (corrDistance < minDist) {
-      currentDistance = minDist;
-    } else {
-      currentDistance = corrDistance;
-    }  
-  }
-  logDetailData(origDistance,currentDistance,estimatedDistance,minDist,maxDist,distHistory,sortedHistory);
+  logDetailData(origDistance,corrDistance,estimatedDistance);
+  currentDistance = estimatedDistance;
   currentDistanceEvaluation = evaluateDistance();
   dist_check_millis = millis();
 };
@@ -467,7 +425,6 @@ void getCurrentData() {
 void displayCurrentData() {
   logCurrentData();
   FastLED.clear();
-  CRGB color;
   drawDistance(currentDistance,useMetric,currentDistanceEvaluation,currentCar);
   drawDistanceWord(useMetric,currentDistanceEvaluation);
   drawCarLogo(currentCar);
