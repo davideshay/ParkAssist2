@@ -12,6 +12,7 @@
 #include <leds.h>
 #include <camera.h>
 #include <parkassist.h>
+#include <log.h>
 #include <FastLED.h>
 #include <PrettyOTA.h>
 #include "FS.h"
@@ -90,9 +91,8 @@ unsigned long dist_check_millis = 0;
 const unsigned long time_between_dist_checks_millis = 60;
 unsigned long temp_check_millis = 0;
 const unsigned long time_between_temp_checks_millis = 60000;
-const unsigned int maxSamples = 16;
-double distHistory[maxSamples] = {0};
-uint16_t numSamplesCollected = 0;
+unsigned long ota_update_millis = 0;
+const unsigned long time_between_ota_log_millis = 500;
 SimpleKalmanFilter kalmanFilter(75,75,3);
 
 AsyncWebServer serverOTA(80);
@@ -128,6 +128,9 @@ boolean webLogging = true;
 File logFile;
 boolean okToLog = true;
 
+boolean demoMode = false;
+double demoDistance;
+
 void onOTAStart(NSPrettyOTA::UPDATE_MODE updateMode)
 {
     WebSerial.println("OTA update started");
@@ -139,6 +142,7 @@ void onOTAStart(NSPrettyOTA::UPDATE_MODE updateMode)
 
 void onOTAProgress(uint32_t currentSize, uint32_t totalSize)
 {
+    if (millis() - ota_update_millis < time_between_dist_checks_millis) {return;}
     WebSerial.printf("OTA Progress Current: %u bytes, Total: %u bytes\n", currentSize, totalSize);
 }
 
@@ -440,11 +444,6 @@ void resetBaseline() {
   carFirstDetectedDistanceFromFront = 0;
   carFirstClearedSensor = false;
   carFirstClearedSensorDistanceFromFront = 0;
-  numSamplesCollected = 0;
-  for (size_t i = 0; i < maxSamples; i++)
-  {
-    distHistory[i] = 0;
-  }
   logFile.close();
 }
 

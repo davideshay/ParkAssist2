@@ -1,3 +1,6 @@
+#ifndef LEDS_H
+#define LEDS_H
+
 #include <Arduino.h>
 #include <parkassist.h>
 
@@ -53,3 +56,6 @@ static const uint16_t word_in_9x3[] = {
   0b0000000000010101,
   0b0000000000010101
 };
+
+
+#endif
