@@ -21,8 +21,6 @@ const bool    kMatrixVertical = false;
 CRGB leds_plus_safety_pixel[ NUM_LEDS + 1];
 CRGB* const leds( leds_plus_safety_pixel + 1);
 
-unsigned long draw_log_millis = 0;
-
 void initLEDs() {
     FastLED.addLeds<CHIPSET, LED_PANEL_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalSMD5050);
     FastLED.setBrightness( BRIGHTNESS );
@@ -117,20 +115,6 @@ void drawNegativeSign(CRGB color) {
 }
 
 void drawDistance(double currentDistance,boolean useMetric, distanceEvaluation distEval, carInfoStruct currentCar) {
-  if (millis() - draw_log_millis > 500) {
-    String msg = "colorcode=";
-    msg += distEval.colorCode;
-    msg += " colorRGB=";
-    msg += uint8_t(distEval.colorRGB.r);
-    msg += ",";
-    msg += uint8_t(distEval.colorRGB.g);
-    msg += ",";
-    msg += uint8_t(distEval.colorRGB.b);
-    msg += " intotarg=";
-    msg += distEval.inchesToTarget;
-    WebSerial.println(msg);
-    draw_log_millis = millis();
-  }
   if (distEval.displayInfinity) {
     drawInfiniteDistance(distEval.colorRGB);
     return;

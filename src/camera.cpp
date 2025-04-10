@@ -1,7 +1,7 @@
 #include <Arduino.h>
-#include "esp_camera.h"
-#define CAMERA_MODEL_ESP32S3_EYE // Has PSRAM
-#include "camera_pins.h"
+#include <camera.h>
+
+AsyncWebServer serverCam(82);
 
 void initCamera() {
     camera_config_t config;
@@ -65,5 +65,13 @@ void initCamera() {
       #if defined(CAMERA_MODEL_ESP32S3_EYE)
         s->set_vflip(s, 1);
       #endif
+    
+      serverCam.on("/picture", HTTP_GET, [](AsyncWebServerRequest * request) {
+        camera_fb_t * frame = NULL;
+        frame = esp_camera_fb_get();
+        request->send(200, "image/jpeg", (const uint8_t *)frame->buf, frame->len);
+        esp_camera_fb_return(frame);
+      });
+      serverCam.begin();
     
   }  

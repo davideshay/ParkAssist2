@@ -3,6 +3,13 @@
 
 #include <FastLED.h>
 
+#define TEMP_SENSOR_BUS 14
+#define DIST_SENSOR_TRIGGER 19
+#define DIST_SENSOR_ECHO 20
+#define IR_BREAK_SENSOR 21
+
+int64_t esp_millis();
+
 struct carInfoStruct {
     int targetFrontDistanceCm;
     int maxFrontDistanceCm;
@@ -27,6 +34,16 @@ struct distanceEvaluation {
     int16_t inchesToTarget;
     int16_t cmToTarget;
     int8_t displayDistance;
+};
+
+enum stateOpts {
+  BASELINE,
+  DOOR_OPENING,
+  CAR_PRESENT,
+  DETECTING_CAR_TYPE,
+  CAR_TYPE_DETECTED,
+  SHOWING_DATA,
+  TIMER_EXPIRED
 };
 
 #endif
