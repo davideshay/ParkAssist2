@@ -100,6 +100,7 @@ double carFirstDetectedDistanceFromFront;
 boolean carFirstDetected = false;
 double carFirstClearedSensorDistanceFromFront;
 boolean carFirstClearedSensor = false;
+double realDistanceDetected = false;
 boolean carDetected;
 boolean useMetric = false;
 
@@ -159,28 +160,9 @@ distanceEvaluation evaluateDistance() {
     .displayDistance = 0
   };
   double smoothedDistance = currentDistance;
-  if (currentDistance == -1) {
+  if (currentDistance == -1 || currentDistance < 0) {
     smoothedDistance = currentCar.sensorDistanceFromFrontCm;
   };
-  if (digitalRead(IR_BREAK_SENSOR) == LOW) {
-    carDetected = true;
-    if (!carFirstDetected) {
-      carFirstDetected = true;
-      carFirstDetectedDistanceFromFront = smoothedDistance;
-      String msg = "First Detected Car at distance: ";
-      msg += carFirstDetectedDistanceFromFront;
-      logData(msg,true);
-    }
-  } else {
-    if (carDetected) {
-      carFirstClearedSensor = true;
-      carFirstClearedSensorDistanceFromFront = smoothedDistance;
-      String msg = "First Detected Car Cleared Sensor at distance: ";
-      msg += carFirstClearedSensorDistanceFromFront;
-      logData(msg,true);
-    }
-    carDetected = false;
-  }
   if (carDetected) {
     distEval.colorRGB = CRGB::Yellow;
     distEval.colorCode = YELLOW;
@@ -226,14 +208,56 @@ void getTemperature() {
   currentTemp = tempSensors.getTempCByIndex(0);
 }
 
+void getIRBreak() {
+  bool irBreak;
+  if (demoMode) {irBreak = demoIRBREAK;} else {irBreak = digitalRead(IR_BREAK_SENSOR) == LOW;}
+  if (irBreak) {
+    carDetected = true;
+    if (!carFirstDetected) {
+      carFirstDetected = true;
+      carFirstDetectedDistanceFromFront = currentDistance;
+      String msg = "First Detected Car at distance: ";
+      msg += carFirstDetectedDistanceFromFront;
+      logData(msg,true);
+    }
+  } else {
+    if (carDetected) {
+      carFirstClearedSensor = true;
+      carFirstClearedSensorDistanceFromFront = currentDistance;
+      String msg = "First Detected Car Cleared Sensor at distance: ";
+      msg += carFirstClearedSensorDistanceFromFront;
+      logData(msg,true);
+    }
+    carDetected = false;
+  }
+}
+
 void getCurrentData() {
   if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
-  double origDistance = distanceSensor.measureDistanceCm(currentTemp);
-  double corrDistance = origDistance;
-  if (corrDistance == -1) {corrDistance = currentCar.sensorDistanceFromFrontCm;}
-  float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
-  logDetailData(origDistance,corrDistance,estimatedDistance);
-  currentDistance = estimatedDistance;
+  if (demoMode) {
+    currentDistance = demoDistance;
+  } else {
+    double origDistance = distanceSensor.measureDistanceCm(currentTemp);
+    double corrDistance;
+    if ((corrDistance == -1 || corrDistance < 0)) {
+      if (realDistanceDetected) {
+      // At some point, I had already detected a real distance, but now I don't
+      // This is either bad sensor data (99% of the time) or could be car backing out and can no longer be seen
+      return;
+      } else {
+        corrDistance = currentCar.sensorDistanceFromFrontCm;
+      }
+    } else {
+      realDistanceDetected = true;
+    }
+    corrDistance = origDistance;
+    realDistanceDetected = true;
+
+    float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
+    logDetailData(origDistance,corrDistance,estimatedDistance);
+    currentDistance = estimatedDistance;
+  }
+  getIRBreak();
   currentDistanceEvaluation = evaluateDistance();
   dist_check_millis = esp_millis();
 };
@@ -256,6 +280,7 @@ void resetBaseline() {
   carFirstDetectedDistanceFromFront = 0;
   carFirstClearedSensor = false;
   carFirstClearedSensorDistanceFromFront = 0;
+  realDistanceDetected = false;
   closeLogFile();
 }
 
