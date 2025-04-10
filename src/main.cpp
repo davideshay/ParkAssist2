@@ -105,6 +105,7 @@ boolean useMetric = false;
 
 boolean demoMode = false;
 double demoDistance;
+boolean demoIRBREAK = true;
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);

@@ -7,6 +7,10 @@ extern stateOpts curState;
 extern carInfoStruct currentCar;
 extern double currentDistance;
 extern distanceEvaluation currentDistanceEvaluation;
+extern boolean demoMode;
+extern double demoDistance;
+extern boolean demoIRBREAK;
+
 
 // Local file variables for logging
 
@@ -32,30 +36,7 @@ void initLogging() {
      
     WebSerial.begin(&serverLog);
     WebSerial.onMessage([](uint8_t *data, size_t len) {
-      Serial.printf("Received %lu bytes from WebSerial: ", len);
-      Serial.write(data, len);
-      Serial.println();
-      WebSerial.println("Received Data...");
-      String d = "";
-      for(size_t i = 0; i < len; i++){
-        d += char(data[i]);
-      }
-      if (d == "move") {
-        WebSerial.println("Detected move command, setting to car detected");
-        curState = CAR_TYPE_DETECTED;
-      } else if (d.startsWith("changeip") && netLogging) {
-        String newIPs = d.substring(9);
-        WebSerial.println("Changing netlogging IP address to " + newIPs );
-        IPAddress newIP;
-        newIP.fromString(newIPs);
-        logClient.stop();
-        if (!logClient.connect(newIP,10000)) {
-          WebSerial.println("Error changing netlogging IP address to " + newIPs);
-        } else {
-          logClient.println("Changed netlogging to this IP address: "+newIPs);
-        }
-      }
-      WebSerial.println(d);
+        processConsoleMessage(data, len);
     });
     delay(1000);
     WebSerial.println("Starting Web Serial Log for Park Assist");
@@ -90,6 +71,74 @@ void initLogging() {
     });
   serverLogDetail.begin();
 }
+
+void processConsoleMessage(uint8_t *data, size_t len) {
+    Serial.printf("Received %lu bytes from WebSerial: ", len);
+    Serial.write(data, len);
+    Serial.println();
+    WebSerial.println("Received Data...");
+    String d = "";
+    for(size_t i = 0; i < len; i++){
+      d += char(data[i]);
+    }
+    if (d.startsWith("demo")) {
+        String newMode = d.substring(5);
+        if (newMode == "on") {
+            demoMode = true;
+            WebSerial.println("Demo mode on. Type 'move xx' to move virtual car to a specific distance from the sensor. Type 'irbreak on|off' to set the IR break sensor demo value.");
+        } else if (newMode == "off") {
+            demoMode = false;
+        } else {
+            WebSerial.println("Invalid demo mode specified. Say 'demo on' or 'demo off'.");
+        }
+    } else if (d.startsWith("irbreak")) {
+        String newBreak = d.substring(8);
+        if (newBreak == "on") {
+            demoIRBREAK = true;
+            WebSerial.println("IR Break Demo Sensor on - demo car breaking the beam, DEMO CAR PRESENT");
+        } else if (newBreak) {
+            demoIRBREAK = false;
+            WebSerial.println("IR Break Demo Sensor off - demo car not breaking beam - DEMO CAR NOT PRESENT");
+        } else {
+            WebSerial.println("Invalid value set for IR Break Demo sensor");
+        }
+    } else if (d == "start") {
+      WebSerial.println("Detected start command, setting to car detected");
+      curState = CAR_TYPE_DETECTED;
+    } else if (d.startsWith("move")) {
+        String newDist = d.substring(5);
+        try {
+            double newDemoDistance = newDist.toDouble();
+            if (newDemoDistance == 0) {
+                WebSerial.println("Demo distance not sent, likely invalid value.");
+            } else {
+                demoDistance = newDemoDistance;
+                WebSerial.print("Demo distance set to: ");
+                WebSerial.print(demoDistance);
+                WebSerial.println(" cm");
+            }
+        } catch (const std::exception& e) {
+            WebSerial.println("Error setting move distance as requested. Use a number.");
+        }
+    
+    } else if (d.startsWith("changeip") && netLogging) {
+      String newIPs = d.substring(9);
+      WebSerial.println("Changing netlogging IP address to " + newIPs );
+      IPAddress newIP;
+      newIP.fromString(newIPs);
+      logClient.stop();
+      if (!logClient.connect(newIP,10000)) {
+        WebSerial.println("Error changing netlogging IP address to " + newIPs);
+      } else {
+        logClient.println("Changed netlogging to this IP address: "+newIPs);
+      }
+    } else {
+        WebSerial.println("Invalid command. Try 'demo on' to start demo mode or 'changeip x.x.x.x to change logging ip address.");
+    }
+    WebSerial.println(d);
+}
+
+
 
 void openLogFileAppend() {
     if (fileLogging) {

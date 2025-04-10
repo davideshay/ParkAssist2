@@ -17,5 +17,6 @@ void initLogging();
 void logCurrentData();
 void logDetailData(double od,double cd,float ed);
 void closeLogFile();
+void processConsoleMessage(uint8_t *data, size_t len);
 
 #endif
