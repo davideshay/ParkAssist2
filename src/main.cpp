@@ -17,6 +17,7 @@
 #include <FastLED.h>
 #include <PrettyOTA.h>
 #include <SimpleKalmanFilter.h>
+#include "driver/temp_sensor.h"
 
 // 
 // PIN LAYOUT -- all defined in parkassist.h
@@ -24,16 +25,11 @@
 // Camera uses pins 4,5,6,7,15,16,17,18,8,9,10,11,12,13
 //    (all of one side of the board except for 3 JTAG and 46 LOG
 //
-// 1 - OneWire - Temperature Sensor
-// 42 - HCSR04 Trigger (out)
-// 41 - HCSR04 Echo (in)
-// 40 - IR Break Sensor
-// 39 - WS2812 LED Panel Out
-// #define TEMP_SENSOR_BUS 14
-// #define DIST_SENSOR_TRIGGER 19
-// #define DIST_SENSOR_ECHO 20
+// #define TEMP_SENSOR_BUS 14.   (OneWire DS18B20)
+// #define DIST_SENSOR_TRIGGER 19. (HC-SR04)
+// #define DIST_SENSOR_ECHO 20. (HC-SR04)
 // #define IR_BREAK_SENSOR 21
-// #define LED_PANEL_PIN 47
+// #define LED_PANEL_PIN 47. (WS2812 panel)
 
 // structureof carLogo - 1 blank bit, followed by 3 bits (color 0-7) each 5x to represent first 5 pixels. 
 // Cover 60 pixels -- 6 rows x 10 columns. Go row-by-row in order. So first int_16 is first 5 pixels.

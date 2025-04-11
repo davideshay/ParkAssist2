@@ -110,7 +110,11 @@ void processConsoleMessage(uint8_t *data, size_t len) {
       msg += currentTemp;
       msg +=" real dist in cm=";
       msg += getSensorDistance();
-      WebSerial.println(msg ); 
+      msg += " internal temp in C=";
+      float result = 0;
+      temp_sensor_read_celsius(&result); 
+      msg += result;
+      WebSerial.println(msg);
     } else if (d.startsWith("move")) {
         String newDist = d.substring(5);
         try {

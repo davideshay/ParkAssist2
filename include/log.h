@@ -8,6 +8,7 @@
 #include <WiFiClient.h>
 #include <HCSR04.h>
 #include <parkassist.h>
+#include "driver/temp_sensor.h"
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 
