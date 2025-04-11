@@ -10,7 +10,7 @@ extern distanceEvaluation currentDistanceEvaluation;
 extern boolean demoMode;
 extern double demoDistance;
 extern boolean demoIRBREAK;
-
+extern float currentTemp;
 
 // Local file variables for logging
 
@@ -76,7 +76,6 @@ void processConsoleMessage(uint8_t *data, size_t len) {
     Serial.printf("Received %lu bytes from WebSerial: ", len);
     Serial.write(data, len);
     Serial.println();
-    WebSerial.println("Received Data...");
     String d = "";
     for(size_t i = 0; i < len; i++){
       d += char(data[i]);
@@ -105,6 +104,13 @@ void processConsoleMessage(uint8_t *data, size_t len) {
     } else if (d == "start") {
       WebSerial.println("Detected start command, setting to car detected");
       curState = CAR_TYPE_DETECTED;
+    } else if (d == "real") {
+      getTemperature();
+      String msg = "current temp in C=";
+      msg += currentTemp;
+      msg +=" real dist in cm=";
+      msg += getSensorDistance();
+      WebSerial.println(msg ); 
     } else if (d.startsWith("move")) {
         String newDist = d.substring(5);
         try {
@@ -135,7 +141,6 @@ void processConsoleMessage(uint8_t *data, size_t len) {
     } else {
         WebSerial.println("Invalid command. Try 'demo on' to start demo mode or 'changeip x.x.x.x to change logging ip address.");
     }
-    WebSerial.println(d);
 }
 
 

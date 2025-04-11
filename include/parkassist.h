@@ -46,5 +46,8 @@ enum stateOpts {
   TIMER_EXPIRED
 };
 
+double getSensorDistance();
+void getTemperature();
+
 #endif
   

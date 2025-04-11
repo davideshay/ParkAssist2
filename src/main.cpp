@@ -40,7 +40,7 @@
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
 
 carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 77, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
+  { .targetFrontDistanceCm = 79, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
      .carLogo = 
     {
       0b0100100100000000,
@@ -95,6 +95,7 @@ DallasTemperature tempSensors(&oneWire);
 
 float currentTemp;
 double currentDistance;
+const double maxDistanceDeltaOK = 50;
 distanceEvaluation currentDistanceEvaluation;
 double carFirstDetectedDistanceFromFront;
 boolean carFirstDetected = false;
@@ -204,8 +205,13 @@ distanceEvaluation evaluateDistance() {
 }
 
 void getTemperature() {
-  tempSensors.requestTemperatures(); 
-  currentTemp = tempSensors.getTempCByIndex(0);
+  tempSensors.requestTemperatures();
+  if (tempSensors.getTempCByIndex(0) > -127) {
+    currentTemp = tempSensors.getTempCByIndex(0);
+  } else {
+    logData("No reading available from temperature sensor, setting to 20C/68F",true);
+    currentTemp = 20;
+  }
 }
 
 void getIRBreak() {
@@ -232,12 +238,19 @@ void getIRBreak() {
   }
 }
 
+double getSensorDistance() {
+  return distanceSensor.measureDistanceCm(currentTemp);
+}
+
 void getCurrentData() {
   if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
   if (demoMode) {
     currentDistance = demoDistance;
   } else {
-    double origDistance = distanceSensor.measureDistanceCm(currentTemp);
+    double origDistance = getSensorDistance();
+//    String m = "ood=";
+//    m += origDistance;
+//    logData(m,false);
     double corrDistance;
     if ((corrDistance == -1 || corrDistance < 0)) {
       if (realDistanceDetected) {
@@ -245,14 +258,21 @@ void getCurrentData() {
       // This is either bad sensor data (99% of the time) or could be car backing out and can no longer be seen
       return;
       } else {
+      // Never had a real distance detected , default value to the max distance in the garage (distance to door)
         corrDistance = currentCar.sensorDistanceFromFrontCm;
       }
     } else {
-      realDistanceDetected = true;
+      // A "real" distance has come in from the sensor. If it deviates by more than 50cm from the current distance
+      // then throw it out if this is not the first reading
+      if (realDistanceDetected) {
+        // if (abs(currentDistance - origDistance) > 50) {return;}
+      } else {
+        // This is the first real distance to be detected -- accept the value without deviation check
+        realDistanceDetected = true;
+      }
+      corrDistance = origDistance;
     }
-    corrDistance = origDistance;
-    realDistanceDetected = true;
-
+    
     float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
     logDetailData(origDistance,corrDistance,estimatedDistance);
     currentDistance = estimatedDistance;
@@ -281,6 +301,7 @@ void resetBaseline() {
   carFirstClearedSensor = false;
   carFirstClearedSensorDistanceFromFront = 0;
   realDistanceDetected = false;
+  currentDistance = 0;
   closeLogFile();
 }
 

@@ -6,6 +6,7 @@
 #include <LittleFS.h>
 #include <WebSerial.h>
 #include <WiFiClient.h>
+#include <HCSR04.h>
 #include <parkassist.h>
 
 #define FORMAT_LITTLEFS_IF_FAILED true
