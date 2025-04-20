@@ -240,6 +240,7 @@ void getIRBreak() {
 }
 
 void startSensorRanging() {
+  vl_status = sensor_vl53l8cx_top.set_ranging_mode(VL53L8CX_RANGING_MODE_CONTINUOUS);
   vl_status = sensor_vl53l8cx_top.start_ranging();
     if (vl_status != VL53L8CX_STATUS_OK ) {
       String msg = "VL53L8CX start_ranging failed: ";
@@ -270,7 +271,11 @@ double getSensorDistancemm() {
   msg += ",";
   for (size_t i = 0; i < 16; i++)
   {
-    if (Results.distance_mm[i] < minimumDistancemm) {
+    if ((Results.distance_mm[i] < minimumDistancemm) && (
+      Results.target_status[i] == VL53L8CX_TARGET_STATUS_RANGE_VALID ||
+      Results.target_status[i] == VL53L8CX_TARGET_STATUS_RANGE_VALID_LARGE_PULSE ||
+      Results.target_status[i] == VL53L8CX_TARGET_STATUS_RANGE_VALID_NO_PREVIOUS 
+    )) {
       minimumDistancemm = Results.distance_mm[i];
     }
     msg += "d";
