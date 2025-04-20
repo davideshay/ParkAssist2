@@ -4,9 +4,10 @@
 #include <FastLED.h>
 
 #define TEMP_SENSOR_BUS 14
-#define DIST_SENSOR_TRIGGER 19
-#define DIST_SENSOR_ECHO 20
+#define SDA_PIN 19
+#define SCL_PIN 20
 #define IR_BREAK_SENSOR 21
+#define LED_PANEL_PIN 47
 
 int64_t esp_millis();
 
@@ -46,8 +47,7 @@ enum stateOpts {
   TIMER_EXPIRED
 };
 
-double getSensorDistance();
-void getTemperature();
+double getSensorDistancemm();
 
 #endif
   

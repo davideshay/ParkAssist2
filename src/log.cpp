@@ -105,15 +105,8 @@ void processConsoleMessage(uint8_t *data, size_t len) {
       WebSerial.println("Detected start command, setting to car detected");
       curState = CAR_TYPE_DETECTED;
     } else if (d == "real") {
-      getTemperature();
-      String msg = "current temp in C=";
-      msg += currentTemp;
-      msg +=" real dist in cm=";
-      msg += getSensorDistance();
-      msg += " internal temp in C=";
-      float result = 0;
-      temp_sensor_read_celsius(&result); 
-      msg += result;
+      String msg = "real dist in mm=";
+      msg += getSensorDistancemm();
       WebSerial.println(msg);
     } else if (d.startsWith("move")) {
         String newDist = d.substring(5);

@@ -6,9 +6,6 @@
 #include <ESPAsyncWebServer.h>
 #include <WebSerial.h>
 #include <wificodes.h>
-#include <HCSR04.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
 #include <leds.h>
 #include <camera.h>
 #include <parkassist.h>
@@ -17,7 +14,7 @@
 #include <FastLED.h>
 #include <PrettyOTA.h>
 #include <SimpleKalmanFilter.h>
-#include "driver/temp_sensor.h"
+#include <vl53l8cx.h>
 
 // 
 // PIN LAYOUT -- all defined in parkassist.h
@@ -81,15 +78,24 @@ SimpleKalmanFilter kalmanFilter(75,75,3);
 AsyncWebServer serverOTA(80);
 PrettyOTA OTAUpdates;
 
-UltraSonicDistanceSensor distanceSensor(DIST_SENSOR_TRIGGER, DIST_SENSOR_ECHO);  // Initialize sensor that uses digital pins 42 and 41
+// Declare the LIDAR sensor -- -1 is because we don't use the power enable pin
+// #define VL53L8CX_DISABLE_AMBIENT_PER_SPAD
+#define VL53L8CX_DISABLE_NB_SPADS_ENABLED
+// #define VL53L8CX_DISABLE_NB_TARGET_DETECTED
+#define VL53L8CX_DISABLE_SIGNAL_PER_SPAD
+#define VL53L8CX_DISABLE_RANGE_SIGMA_MM
+// #define VL53L8CX_DISABLE_DISTANCE_MM
+#define VL53L8CX_DISABLE_REFLECTANCE_PERCENT
+// #define VL53L8CX_DISABLE_TARGET_STATUS
+#define VL53L8CX_DISABLE_MOTION_INDICATOR
 
-// Setup a oneWire instance to communicate with any OneWire devices
-OneWire oneWire(TEMP_SENSOR_BUS);
+VL53L8CX sensor_vl53l8cx_top(&Wire, -1);
+bool EnableAmbient = false;
+bool EnableSignal = false;
+uint8_t res = VL53L8CX_RESOLUTION_4X4;
+char vl_report[256];
+uint8_t vl_status;
 
-// Pass our oneWire reference to Dallas Temperature sensor 
-DallasTemperature tempSensors(&oneWire);
-
-float currentTemp;
 double currentDistance;
 const double maxDistanceDeltaOK = 50;
 distanceEvaluation currentDistanceEvaluation;
@@ -137,7 +143,16 @@ void setup() {
   OTAUpdates.OnProgress(onOTAProgress);
   OTAUpdates.OnEnd(onOTAEnd);
 
-  tempSensors.begin();
+  // Configure VL53L8CX component.
+  sensor_vl53l8cx_top.begin();
+  vl_status = sensor_vl53l8cx_top.init();
+  if (vl_status != VL53L8CX_STATUS_OK) {
+    Serial.print("VL53L8CX init failed: ");
+    Serial.println(vl_status);
+  } else {
+    Serial.println("VL53L8CX init success");
+  }
+
   initCamera();
   initLEDs();
   
@@ -200,16 +215,6 @@ distanceEvaluation evaluateDistance() {
   return distEval;
 }
 
-void getTemperature() {
-  tempSensors.requestTemperatures();
-  if (tempSensors.getTempCByIndex(0) > -127) {
-    currentTemp = tempSensors.getTempCByIndex(0);
-  } else {
-    logData("No reading available from temperature sensor, setting to 20C/68F",true);
-    currentTemp = 20;
-  }
-}
-
 void getIRBreak() {
   bool irBreak;
   if (demoMode) {irBreak = demoIRBREAK;} else {irBreak = digitalRead(IR_BREAK_SENSOR) == LOW;}
@@ -234,19 +239,63 @@ void getIRBreak() {
   }
 }
 
-double getSensorDistance() {
-  return distanceSensor.measureDistanceCm(currentTemp);
+void startSensorRanging() {
+  vl_status = sensor_vl53l8cx_top.start_ranging();
+    if (vl_status != VL53L8CX_STATUS_OK ) {
+      String msg = "VL53L8CX start_ranging failed: ";
+      msg += vl_status;
+      logData(msg,true);
+  } else {
+    logData("VL53L8CX start_ranging success",true);
+  }
+}
+
+double getSensorDistancemm() {
+  VL53L8CX_ResultsData Results;
+  uint8_t NewDataReady = 0;
+  do {
+    vl_status = sensor_vl53l8cx_top.check_data_ready(&NewDataReady);
+  } while (!NewDataReady);
+  if ((!vl_status) && (NewDataReady != 0)) {
+    vl_status = sensor_vl53l8cx_top.get_ranging_data(&Results);
+  } else {
+    String msg = "VL53L8CX get_ranging_data failed: ";
+    msg += vl_status;
+    logData(msg,true);
+    return 4001;
+  }
+  double minimumDistancemm = 10000;
+  String msg="{ms:";
+  msg += esp_millis();
+  msg += ",";
+  for (size_t i = 0; i < 16; i++)
+  {
+    if (Results.distance_mm[i] < minimumDistancemm) {
+      minimumDistancemm = Results.distance_mm[i];
+    }
+    msg += "d";
+    msg += i;
+    msg += ":";
+    msg += Results.distance_mm[i];
+    msg += ",s";
+    msg += i;
+    msg += ":";
+    msg += Results.target_status[i];
+    msg += ",";
+  }
+  msg += "temp:";
+  msg += Results.silicon_temp_degc;
+  msg += "}";
+  logData(msg,false);
+  return minimumDistancemm;
 }
 
 void getCurrentData() {
-  if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
+//  if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
   if (demoMode) {
     currentDistance = demoDistance;
   } else {
-    double origDistance = getSensorDistance();
-//    String m = "ood=";
-//    m += origDistance;
-//    logData(m,false);
+    double origDistance = getSensorDistancemm() / 10;
     double corrDistance;
     if ((corrDistance == -1 || corrDistance < 0)) {
       if (realDistanceDetected) {
@@ -299,15 +348,11 @@ void resetBaseline() {
   realDistanceDetected = false;
   currentDistance = 0;
   closeLogFile();
+  sensor_vl53l8cx_top.stop_ranging();
 }
 
 void loop() {
     WebSerial.loop();
-    if (esp_millis() - temp_check_millis > time_between_temp_checks_millis) {
-      getTemperature();
-      temp_check_millis = esp_millis();
-    }
-
     switch (curState) {
       case BASELINE:
         if (digitalRead(IR_BREAK_SENSOR) == LOW) {
@@ -333,6 +378,7 @@ void loop() {
       case CAR_TYPE_DETECTED:
         curState = SHOWING_DATA;
         logData("Car Detected. Showing Data...",true);
+        startSensorRanging();
         timer_started_millis = esp_millis();
         break;
       case SHOWING_DATA:

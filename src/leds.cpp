@@ -8,8 +8,6 @@
 #define CHIPSET     WS2812
 #define BRIGHTNESS 64
 
-#define LED_PANEL_PIN 47
-
 // Params for width and height
 const uint8_t kMatrixWidth = 16;
 const uint8_t kMatrixHeight = 16;
