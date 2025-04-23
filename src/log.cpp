@@ -76,71 +76,67 @@ void processConsoleMessage(uint8_t *data, size_t len) {
     Serial.printf("Received %lu bytes from WebSerial: ", len);
     Serial.write(data, len);
     Serial.println();
-    String d = "";
+    String d;
     for(size_t i = 0; i < len; i++){
       d += char(data[i]);
     }
-    if (d.startsWith("demo")) {
+    d.toUpperCase();
+    if (d.startsWith("DEMO")) {
         String newMode = d.substring(5);
-        if (newMode == "on") {
+        if (newMode == "ON") {
             demoMode = true;
-            WebSerial.println("Demo mode on. Type 'move xx' to move virtual car to a specific distance from the sensor. Type 'irbreak on|off' to set the IR break sensor demo value.");
-        } else if (newMode == "off") {
+            logData("Demo mode on. Type 'move xx' to move virtual car to a specific distance from the sensor. Type 'irbreak on|off' to set the IR break sensor demo value.",true);
+        } else if (newMode == "OFF") {
             demoMode = false;
         } else {
-            WebSerial.println("Invalid demo mode specified. Say 'demo on' or 'demo off'.");
+            logData("Invalid demo mode specified. Say 'demo on' or 'demo off'.",true);
         }
-    } else if (d.startsWith("irbreak")) {
+    } else if (d.startsWith("IRBREAK")) {
         String newBreak = d.substring(8);
-        if (newBreak == "on") {
+        if (newBreak == "ON") {
             demoIRBREAK = true;
-            WebSerial.println("IR Break Demo Sensor on - demo car breaking the beam, DEMO CAR PRESENT");
-        } else if (newBreak) {
+            logData("IR Break Demo Sensor on - demo car breaking the beam, DEMO CAR PRESENT",true);
+        } else if (newBreak == "OFF") {
             demoIRBREAK = false;
-            WebSerial.println("IR Break Demo Sensor off - demo car not breaking beam - DEMO CAR NOT PRESENT");
+            logData("IR Break Demo Sensor off - demo car not breaking the beam, DEMO CAR NOT PRESENT",true);
         } else {
-            WebSerial.println("Invalid value set for IR Break Demo sensor");
+            logData("Invalid IR Break Demo sensor value specified. Say 'irbreak on' or 'irbreak off'.",true);
         }
-    } else if (d == "start") {
-      WebSerial.println("Detected start command, setting to car detected");
+    } else if (d == "START") {
+      logData("Detected start command, setting to car detected",true);
       curState = CAR_TYPE_DETECTED;
-    } else if (d == "real") {
+    } else if (d == "REAL") {
       String msg = "real dist in mm=";
       msg += getSensorDistancemm();
-      WebSerial.println(msg);
-    } else if (d.startsWith("move")) {
+      logData(msg,true);
+    } else if (d.startsWith("MOVE")) {
         String newDist = d.substring(5);
         try {
             double newDemoDistance = newDist.toDouble();
             if (newDemoDistance == 0) {
-                WebSerial.println("Demo distance not sent, likely invalid value.");
+                logData("Demo distance not sent, likely invalid value.",true);  
             } else {
                 demoDistance = newDemoDistance;
-                WebSerial.print("Demo distance set to: ");
-                WebSerial.print(demoDistance);
-                WebSerial.println(" cm");
+                logData("Demo distance set to: " + String(demoDistance) + " cm",true);
             }
         } catch (const std::exception& e) {
-            WebSerial.println("Error setting move distance as requested. Use a number.");
-        }
-    
-    } else if (d.startsWith("changeip") && netLogging) {
+            logData("Error setting move distance as requested. Use a number.",true);
+        }    
+    } else if (d.startsWith("CHANGEIP") && netLogging) {
       String newIPs = d.substring(9);
-      WebSerial.println("Changing netlogging IP address to " + newIPs );
+      logData("Changing netlogging IP address to " + newIPs,true);
       IPAddress newIP;
       newIP.fromString(newIPs);
       logClient.stop();
       if (!logClient.connect(newIP,10000)) {
-        WebSerial.println("Error changing netlogging IP address to " + newIPs);
+        logData("Error changing netlogging IP address to " + newIPs,true);
       } else {
         logClient.println("Changed netlogging to this IP address: "+newIPs);
       }
     } else {
-        WebSerial.println("Invalid command. Try 'demo on' to start demo mode or 'changeip x.x.x.x to change logging ip address.");
+        logData("Invalid command. Try 'demo on' to start demo mode or 'changeip x.x.x.x to change logging ip address.",true);
     }
 }
-
-
 
 void openLogFileAppend() {
     if (fileLogging) {

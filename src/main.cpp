@@ -15,6 +15,7 @@
 #include <PrettyOTA.h>
 #include <SimpleKalmanFilter.h>
 #include <vl53l8cx.h>
+#include <lidar.h>
 
 // 
 // PIN LAYOUT -- all defined in parkassist.h
@@ -89,7 +90,7 @@ PrettyOTA OTAUpdates;
 // #define VL53L8CX_DISABLE_TARGET_STATUS
 #define VL53L8CX_DISABLE_MOTION_INDICATOR
 
-VL53L8CX sensor_vl53l8cx_top(&Wire, -1);
+VL53L8CX sensor_vl53l8cx(&Wire, -1);
 bool EnableAmbient = false;
 bool EnableSignal = false;
 uint8_t res = VL53L8CX_RESOLUTION_4X4;
@@ -143,18 +144,13 @@ void setup() {
   OTAUpdates.OnProgress(onOTAProgress);
   OTAUpdates.OnEnd(onOTAEnd);
 
-  // Configure VL53L8CX component.
-  sensor_vl53l8cx_top.begin();
-  vl_status = sensor_vl53l8cx_top.init();
-  if (vl_status != VL53L8CX_STATUS_OK) {
-    Serial.print("VL53L8CX init failed: ");
-    Serial.println(vl_status);
-  } else {
-    Serial.println("VL53L8CX init success");
-  }
+  logData("OTA Updates Enabled, starting LIDAR sensor",true);
 
+  initLidarSensor();
   initCamera();
   initLEDs();
+
+  logData("Camera and LEDs initialized, starting baseline loop", true);
   
   //TODO -- DELETE LATER
   currentCar = defaultCar;
@@ -240,8 +236,8 @@ void getIRBreak() {
 }
 
 void startSensorRanging() {
-  vl_status = sensor_vl53l8cx_top.set_ranging_mode(VL53L8CX_RANGING_MODE_CONTINUOUS);
-  vl_status = sensor_vl53l8cx_top.start_ranging();
+  vl_status = sensor_vl53l8cx.set_ranging_mode(VL53L8CX_RANGING_MODE_CONTINUOUS);
+  vl_status = sensor_vl53l8cx.start_ranging();
     if (vl_status != VL53L8CX_STATUS_OK ) {
       String msg = "VL53L8CX start_ranging failed: ";
       msg += vl_status;
@@ -255,10 +251,10 @@ double getSensorDistancemm() {
   VL53L8CX_ResultsData Results;
   uint8_t NewDataReady = 0;
   do {
-    vl_status = sensor_vl53l8cx_top.check_data_ready(&NewDataReady);
+    vl_status = sensor_vl53l8cx.check_data_ready(&NewDataReady);
   } while (!NewDataReady);
   if ((!vl_status) && (NewDataReady != 0)) {
-    vl_status = sensor_vl53l8cx_top.get_ranging_data(&Results);
+    vl_status = sensor_vl53l8cx.get_ranging_data(&Results);
   } else {
     String msg = "VL53L8CX get_ranging_data failed: ";
     msg += vl_status;
@@ -353,7 +349,7 @@ void resetBaseline() {
   realDistanceDetected = false;
   currentDistance = 0;
   closeLogFile();
-  sensor_vl53l8cx_top.stop_ranging();
+  sensor_vl53l8cx.stop_ranging();
 }
 
 void loop() {
