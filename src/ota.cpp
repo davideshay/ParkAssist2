@@ -2,9 +2,11 @@
 
 int64_t ota_update_millis = 0;
 const int64_t time_between_ota_log_millis = 2000;
+extern bool otaStarted;
 
 void onOTAStart(NSPrettyOTA::UPDATE_MODE updateMode)
 {
+    otaStarted = true;
     WebSerial.println("OTA update started");
     if(updateMode == NSPrettyOTA::UPDATE_MODE::FIRMWARE)
         WebSerial.println("Mode: Firmware");

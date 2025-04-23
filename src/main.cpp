@@ -79,6 +79,8 @@ SimpleKalmanFilter kalmanFilter(75,75,3);
 AsyncWebServer serverOTA(80);
 PrettyOTA OTAUpdates;
 
+bool otaStarted = false;
+
 // Declare the LIDAR sensor -- -1 is because we don't use the power enable pin
 // #define VL53L8CX_DISABLE_AMBIENT_PER_SPAD
 #define VL53L8CX_DISABLE_NB_SPADS_ENABLED
@@ -91,6 +93,7 @@ PrettyOTA OTAUpdates;
 #define VL53L8CX_DISABLE_MOTION_INDICATOR
 
 VL53L8CX sensor_vl53l8cx(&Wire, -1);
+uint8_t xtalk_data[VL53L8CX_XTALK_BUFFER_SIZE] = {0};
 bool EnableAmbient = false;
 bool EnableSignal = false;
 uint8_t res = VL53L8CX_RESOLUTION_4X4;
@@ -144,12 +147,16 @@ void setup() {
   OTAUpdates.OnProgress(onOTAProgress);
   OTAUpdates.OnEnd(onOTAEnd);
 
+  logData("OTA Updates Enabled... pausing 10 seconds to allow updates",true);
+  delay(10000);
+
+
   logData("OTA Updates Enabled, starting LIDAR sensor",true);
 
-  initLidarSensor();
-  initCamera();
-  initLEDs();
-
+  if (!otaStarted) {initLidarSensor();};
+  if (!otaStarted) {initCamera();};
+  if (!otaStarted) {initLEDs();};
+  
   logData("Camera and LEDs initialized, starting baseline loop", true);
   
   //TODO -- DELETE LATER
@@ -353,6 +360,10 @@ void resetBaseline() {
 }
 
 void loop() {
+    if (otaStarted) {
+      delay(2000);
+      return;
+    }
     WebSerial.loop();
     switch (curState) {
       case BASELINE:
