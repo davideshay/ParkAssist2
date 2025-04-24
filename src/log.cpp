@@ -28,6 +28,24 @@ WiFiClient logClient;
 IPAddress logTarget = IPAddress(10,10,1,136);
 File logFile;
 
+void connectNetLogging() {
+  if (netLogging) {
+    if (!logClient.connected()) {
+      if (!logClient.connect(logTarget, 10000)) {      
+        WebSerial.println("Connection to host failed");
+      }
+      logClient.println("TCP Logging Initiated");
+      WebSerial.println("TCP Logging Initiated");  
+    }
+  }  
+}
+
+void disconnectNetLogging() {
+  if (netLogging) {
+    logClient.stop();
+  }
+}
+
 void initLogging() {
 
     serverLog.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -41,13 +59,7 @@ void initLogging() {
     delay(1000);
     WebSerial.println("Starting Web Serial Log for Park Assist");
   
-    if (netLogging) {
-      if (!logClient.connect(logTarget, 10000)) {      
-        WebSerial.println("Connection to host failed");
-      }
-      logClient.println("TCP Logging Initiated");
-      WebSerial.println("TCP Logging Initiated");
-    }  
+    connectNetLogging();
     serverLog.begin();
 
     if (fileLogging) {

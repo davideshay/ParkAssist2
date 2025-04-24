@@ -10,6 +10,8 @@
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 
+void disconnectNetLogging();
+void connectNetLogging();
 void openLogFileAppend();
 void openLogFileRead();
 void logData(String message, bool includeWeb);

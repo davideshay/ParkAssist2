@@ -2,6 +2,8 @@
 #define PARKASSIST_H
 
 #include <FastLED.h>
+#include <Preferences.h>
+#include <vl53l8cx.h>
 
 #define TEMP_SENSOR_BUS 14
 #define SDA_PIN 19
@@ -47,7 +49,19 @@ enum stateOpts {
   TIMER_EXPIRED
 };
 
+struct ParkPreferences {
+  int64_t maxCameraCheckMillis;
+  int64_t timeBetweenWifiChecksMillis;
+  IPAddress logTarget;
+  bool fileLogging;
+  bool netLogging;
+  bool webLogging;
+  uint8_t xtalk_data[VL53L8CX_XTALK_BUFFER_SIZE];
+};
+
 double getSensorDistancemm();
+void getPreferences();
+void setPreferences()
 
 #endif
   

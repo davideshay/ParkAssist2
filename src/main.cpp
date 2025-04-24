@@ -17,6 +17,7 @@
 #include <vl53l8cx.h>
 #include <lidar.h>
 
+
 // 
 // PIN LAYOUT -- all defined in parkassist.h
 // 
@@ -75,6 +76,8 @@ const int64_t time_between_dist_checks_millis = 60;
 int64_t temp_check_millis = 0;
 const int64_t time_between_temp_checks_millis = 60000;
 SimpleKalmanFilter kalmanFilter(75,75,3);
+const uint64_t time_between_wifi_checks_millis = 30000;
+uint64_t wifi_check_millis = 0;
 
 AsyncWebServer serverOTA(80);
 PrettyOTA OTAUpdates;
@@ -115,6 +118,8 @@ boolean useMetric = false;
 boolean demoMode = false;
 double demoDistance;
 boolean demoIRBREAK = true;
+
+Preferences ParkAssistPrefs;
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -367,11 +372,26 @@ void resetBaseline() {
   carDetected = false;
 }
 
+void checkReconnectWiFi() {
+  if (esp_millis() - wifi_check_millis > time_between_wifi_checks_millis) {
+    if ((WiFi.status() != WL_CONNECTED)) {
+      logData("Reconnecting to WiFi...",true);
+      disconnectNetLogging();
+      WiFi.disconnect();
+      WiFi.reconnect();
+      connectNetLogging();
+      logData("WiFi reconnected. Logging re-initiated.",true);
+    }
+    wifi_check_millis = esp_millis();
+  }
+}  
+
 void loop() {
     if (otaStarted) {
       delay(2000);
       return;
     }
+    checkReconnectWiFi();
     WebSerial.loop();
     switch (curState) {
       case BASELINE:
