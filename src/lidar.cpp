@@ -11,14 +11,14 @@ void calibrateSensor() {
     sensor_vl53l8cx.calibrate_xtalk(5, 16, 600);
     logData("Getting xtalk data...",true);
     sensor_vl53l8cx.get_caldata_xtalk(xtalk_data);
-    String msg = "calibrated sensor, xtalk data: ";
-    for (size_t i = 0; i < VL53L8CX_XTALK_BUFFER_SIZE; i++)
-    {
-        msg += String(xtalk_data[i]);
-        msg += ",";
-    }
+//    String msg = "calibrated sensor, xtalk data: ";
+    // for (size_t i = 0; i < VL53L8CX_XTALK_BUFFER_SIZE; i++)
+    // {
+    //     msg += String(xtalk_data[i]);
+    //     msg += ",";
+    // }
 //    logData(msg, true);
-  
+    logData("Retrieved xtalk data...",true);
 }
 
 void scanBus() {
@@ -98,7 +98,7 @@ bool initLidarSensor() {
     Serial.println("VL53L8CX init success");
     logData("VL53L8CX init success",true);
     if (otaStarted) {return true;};
-    calibrateSensor();
+      calibrateSensor();
     return true;
   }
 

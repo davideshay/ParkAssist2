@@ -99,6 +99,7 @@ bool EnableSignal = false;
 uint8_t res = VL53L8CX_RESOLUTION_4X4;
 char vl_report[256];
 uint8_t vl_status;
+bool sensorRangingStarted = false;
 
 double currentDistance;
 const double maxDistanceDeltaOK = 50;
@@ -153,6 +154,7 @@ void setup() {
 
   logData("OTA Updates Enabled, starting LIDAR sensor",true);
 
+  
   if (!otaStarted) {initLidarSensor();};
   if (!otaStarted) {initCamera();};
   if (!otaStarted) {initLEDs();};
@@ -251,10 +253,14 @@ void startSensorRanging() {
       logData(msg,true);
   } else {
     logData("VL53L8CX start_ranging success",true);
+    sensorRangingStarted = true;
   }
 }
 
 double getSensorDistancemm() {
+  if (!sensorRangingStarted) {
+    startSensorRanging();
+  }
   VL53L8CX_ResultsData Results;
   uint8_t NewDataReady = 0;
   do {
@@ -357,6 +363,8 @@ void resetBaseline() {
   currentDistance = 0;
   closeLogFile();
   sensor_vl53l8cx.stop_ranging();
+  sensorRangingStarted = false;
+  carDetected = false;
 }
 
 void loop() {
