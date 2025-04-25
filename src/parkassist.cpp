@@ -1,12 +1,84 @@
 #include <parkassist.h>
 
+
+Preferences externalPrefs;
+
+extern ParkPreferences parkPreferences;
+
+ParkPreferences defaultPreferences = {
+  .maxCameraCheckMillis = 1000,
+  .timeBetweenWifiChecksMillis = 30000,
+  .logTarget = IPAddress(10,10,1,136),
+  .logPort = 44444,
+  .secsToReset = 60,
+  .fileLogging = false,
+  .netLogging = true,
+  .webLogging = true,
+  .serialLogging = true,
+  .xtalk_data = {0}
+};
+
+String prefsNamespace = "parkassist";
+String prefsKey = "mainprefs";
+
 // utility functions
 
 int64_t esp_millis() {
     return ( (int64_t)(esp_timer_get_time() / 1000));
 }
 
-void getPreferences();
+#define RW_MODE false
+#define RO_MODE true
 
-void setPreferences();
+void logPrefs(ParkPreferences logPrefs) {
+    String msg = "Prefs: logtgt:";
+    msg += logPrefs.logTarget.toString();
+    msg += " logport:";
+    msg += logPrefs.logPort;
+    msg += " secsToReset:";
+    msg += logPrefs.secsToReset;
+    logData(msg, true);   
+}
+
+void clearPreferences() {
+    externalPrefs.begin(prefsNamespace.c_str(), RW_MODE);
+    externalPrefs.clear();
+    externalPrefs.end();
+    logData("Preferences cleared", true);
+}
+
+void getPreferences() {
+    externalPrefs.begin(prefsNamespace.c_str(), RO_MODE);
+    if (externalPrefs.isKey(prefsKey.c_str())) {
+        externalPrefs.getBytes(prefsKey.c_str(), &parkPreferences, sizeof(parkPreferences));
+        logData("Preferences loaded from external storage.", true);
+    } else {
+        externalPrefs.end();
+        externalPrefs.begin(prefsNamespace.c_str(), RW_MODE);
+        parkPreferences = defaultPreferences;
+        externalPrefs.putBytes(prefsKey.c_str(), &parkPreferences, sizeof(parkPreferences));
+        logData("Preferences not found, created using defaults", true);
+    }
+    externalPrefs.end();
+    connectNetLogging();
+    logData("Preferences after get function:",true);
+    logPrefs(parkPreferences);
+
+}
+
+void setPreferences() {
+    ParkPreferences toSetPrefs;
+    toSetPrefs = parkPreferences;
+    getPreferences();
+    if (memcmp(&toSetPrefs, &parkPreferences, sizeof(ParkPreferences)) != 0) {
+        externalPrefs.begin(prefsNamespace.c_str(), RW_MODE);
+        logPrefs(toSetPrefs);
+        externalPrefs.putBytes(prefsKey.c_str(), &toSetPrefs, sizeof(toSetPrefs));
+        externalPrefs.end();
+        parkPreferences = toSetPrefs;
+        logData("Preferences changed, updated in external storage", true);
+        logPrefs(parkPreferences);
+    }
+
+}
 

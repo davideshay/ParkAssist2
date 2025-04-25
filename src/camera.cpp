@@ -73,5 +73,6 @@ void initCamera() {
         esp_camera_fb_return(frame);
       });
       serverCam.begin();
+      Serial.println("Camera server started");
     
   }  

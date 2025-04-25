@@ -8,5 +8,7 @@
 #define VL53L8CX_TARGET_STATUS_RANGE_VALID_NO_PREVIOUS 10
 
 bool initLidarSensor();
+void startSensorRanging();
+double getSensorDistancemm();
 
 #endif

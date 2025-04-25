@@ -1,4 +1,5 @@
 #include <log.h>
+#include <AsyncUDP.h>
 
 // Variables from main.cpp
 
@@ -11,38 +12,47 @@ extern boolean demoMode;
 extern double demoDistance;
 extern boolean demoIRBREAK;
 extern float currentTemp;
+extern ParkPreferences parkPreferences;
+extern ParkPreferences defaultPreferences;
 
 // Local file variables for logging
 
-boolean fileLogging = false;
-boolean netLogging = true;
-boolean webLogging = true;
-boolean okToLog = true;
+bool okToLog = true;
+bool netLoggingStarted = false;
 
 AsyncWebServer serverLog(81);
 AsyncWebServer serverLogDetail(83);
 
 int64_t logging_millis = 0;
 const int64_t time_between_logs_millis = 500;
-WiFiClient logClient;
-IPAddress logTarget = IPAddress(10,10,1,136);
+AsyncUDP logClientUDP;
 File logFile;
 
 void connectNetLogging() {
-  if (netLogging) {
-    if (!logClient.connected()) {
-      if (!logClient.connect(logTarget, 10000)) {      
-        WebSerial.println("Connection to host failed");
-      }
-      logClient.println("TCP Logging Initiated");
-      WebSerial.println("TCP Logging Initiated");  
+  bool netOK;
+  if (defaultPreferences.netLogging) {
+    logClientUDP.connect(parkPreferences.logTarget, parkPreferences.logPort);
+    if (!logClientUDP.connected()) {
+      logData("UDP connection - failed",true);
+      return;
     }
-  }  
-}
+    netLoggingStarted = true;
+    logClientUDP.println("UDP loggin initiated");
+    String msg = "UDP Logging Initiated";
+    uint16_t bytes_sent = logClientUDP.broadcastTo(msg.c_str(), 44444);
+    if (bytes_sent == msg.length()) {
+      logData("UDP packet sent successfully",true);
+    } else {
+      logData("UDP packet send failed",true);
+    }
+    WebSerial.println("UDP Logging Initiated");  
+  }
+}  
 
 void disconnectNetLogging() {
-  if (netLogging) {
-    logClient.stop();
+  if (defaultPreferences.netLogging) {
+//    logClientUDP.stop();
+    logClientUDP.close();
   }
 }
 
@@ -62,7 +72,7 @@ void initLogging() {
     connectNetLogging();
     serverLog.begin();
 
-    if (fileLogging) {
+    if (parkPreferences.fileLogging) {
         if (!LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)) {
           WebSerial.println("Unable to initialize LittleFS");
           okToLog = false;
@@ -134,24 +144,28 @@ void processConsoleMessage(uint8_t *data, size_t len) {
         } catch (const std::exception& e) {
             logData("Error setting move distance as requested. Use a number.",true);
         }    
-    } else if (d.startsWith("CHANGEIP") && netLogging) {
+    } else if (d.startsWith("CHANGEIP") && parkPreferences.netLogging) {
       String newIPs = d.substring(9);
       logData("Changing netlogging IP address to " + newIPs,true);
       IPAddress newIP;
       newIP.fromString(newIPs);
-      logClient.stop();
-      if (!logClient.connect(newIP,10000)) {
-        logData("Error changing netlogging IP address to " + newIPs,true);
-      } else {
-        logClient.println("Changed netlogging to this IP address: "+newIPs);
-      }
+      disconnectNetLogging();
+      parkPreferences.logTarget = newIP;
+      setPreferences();
+      connectNetLogging();
+      logClientUDP.println("Changed netlogging to this IP address: "+newIPs);
+    } else if (d == "CLEARPREFS") {
+      clearPreferences();
+      logData("Cleared all preferences, including logging IP address and port.",true);  
+    } else if (d == "GETPREFS") {
+      getPreferences();
     } else {
         logData("Invalid command. Try 'demo on' to start demo mode or 'changeip x.x.x.x to change logging ip address.",true);
     }
 }
 
 void openLogFileAppend() {
-    if (fileLogging) {
+    if (parkPreferences.fileLogging) {
       logFile = LittleFS.open("/logfile.txt", FILE_APPEND);
       if (!logFile) {
         WebSerial.println("Unable to open log file for writing");
@@ -169,9 +183,23 @@ void openLogFileRead() {
 }
   
 void logData(String message, bool includeWeb = true) {
-    if (webLogging && includeWeb) {WebSerial.println(message);}
-    if (fileLogging && okToLog) {logFile.println(message);}
-    if (netLogging) {logClient.println(message);}
+    Serial.println(message);
+    if (defaultPreferences.webLogging && includeWeb) {WebSerial.println(message);}
+    if (parkPreferences.fileLogging && okToLog) {logFile.println(message);}
+    if (defaultPreferences.netLogging) {
+      // bool netOK =logClientUDP.beginPacket(parkPreferences.logTarget, parkPreferences.logPort);
+      // if (!netOK) {
+      //   Serial.println("UDP connection - beginpacket - failed");
+      //   return;
+      // }
+      uint16_t bytesSent = logClientUDP.broadcastTo(message.c_str(), 44444);
+      if (bytesSent == message.length()) {
+        Serial.println("UDP packet sent successfully");
+      } else {
+        Serial.println("UDP packet send failed");
+      }
+//      logClientUDP.endPacket();
+    }
 }
   
 void logCurrentData() {
@@ -207,7 +235,7 @@ void logCurrentData() {
   }
   
 void logDetailData(double od,double cd,float ed) {
-    if (!fileLogging && !webLogging && !netLogging) {return;}
+    if (!parkPreferences.fileLogging && !parkPreferences.webLogging && !parkPreferences.netLogging) {return;}
     String logLine;
     logLine = "ms=";
     logLine += esp_millis();
@@ -221,6 +249,6 @@ void logDetailData(double od,double cd,float ed) {
   }
 
   void closeLogFile() {
-    if (fileLogging) {logFile.close();}
+    if (parkPreferences.fileLogging) {logFile.close();}
   }
   

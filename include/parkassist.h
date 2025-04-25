@@ -4,6 +4,7 @@
 #include <FastLED.h>
 #include <Preferences.h>
 #include <vl53l8cx.h>
+#include <log.h>
 
 #define TEMP_SENSOR_BUS 14
 #define SDA_PIN 19
@@ -53,15 +54,19 @@ struct ParkPreferences {
   int64_t maxCameraCheckMillis;
   int64_t timeBetweenWifiChecksMillis;
   IPAddress logTarget;
+  uint16_t logPort;
+  uint16_t secsToReset;
   bool fileLogging;
   bool netLogging;
   bool webLogging;
+  bool serialLogging;
   uint8_t xtalk_data[VL53L8CX_XTALK_BUFFER_SIZE];
 };
 
 double getSensorDistancemm();
 void getPreferences();
-void setPreferences()
+void setPreferences();
+void clearPreferences();
 
 #endif
   

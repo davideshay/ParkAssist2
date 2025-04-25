@@ -64,19 +64,18 @@ carInfoStruct defaultCar =
 
 carInfoStruct currentCar;
 
+ParkPreferences parkPreferences;
+extern ParkPreferences defaultPreferences;
+
 stateOpts curState = BASELINE;
 
-int secsToReset = 60;
 int64_t camera_checking_millis = 0;
-int64_t maxCameraCheckMillis = 1000;
 int64_t timer_started_millis = 0;
-
 int64_t dist_check_millis = 0;
 const int64_t time_between_dist_checks_millis = 60;
 int64_t temp_check_millis = 0;
 const int64_t time_between_temp_checks_millis = 60000;
 SimpleKalmanFilter kalmanFilter(75,75,3);
-const uint64_t time_between_wifi_checks_millis = 30000;
 uint64_t wifi_check_millis = 0;
 
 AsyncWebServer serverOTA(80);
@@ -96,7 +95,6 @@ bool otaStarted = false;
 #define VL53L8CX_DISABLE_MOTION_INDICATOR
 
 VL53L8CX sensor_vl53l8cx(&Wire, -1);
-uint8_t xtalk_data[VL53L8CX_XTALK_BUFFER_SIZE] = {0};
 bool EnableAmbient = false;
 bool EnableSignal = false;
 uint8_t res = VL53L8CX_RESOLUTION_4X4;
@@ -119,8 +117,6 @@ boolean demoMode = false;
 double demoDistance;
 boolean demoIRBREAK = true;
 
-Preferences ParkAssistPrefs;
-
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(IR_BREAK_SENSOR, INPUT);
@@ -140,8 +136,6 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  initLogging();
- 
   serverOTA.begin();
   Serial.println("OTA HTTP server started");
 
@@ -156,10 +150,15 @@ void setup() {
   logData("OTA Updates Enabled... pausing 10 seconds to allow updates",true);
   delay(10000);
 
+  logData("OTA Update delay complete, getting preferences and starting logging",true);
 
+  // getPreferences();
+  parkPreferences = defaultPreferences;
+  initLogging();
+ 
   logData("OTA Updates Enabled, starting LIDAR sensor",true);
 
-  
+ 
   if (!otaStarted) {initLidarSensor();};
   if (!otaStarted) {initCamera();};
   if (!otaStarted) {initLEDs();};
@@ -249,66 +248,6 @@ void getIRBreak() {
   }
 }
 
-void startSensorRanging() {
-  vl_status = sensor_vl53l8cx.set_ranging_mode(VL53L8CX_RANGING_MODE_CONTINUOUS);
-  vl_status = sensor_vl53l8cx.start_ranging();
-    if (vl_status != VL53L8CX_STATUS_OK ) {
-      String msg = "VL53L8CX start_ranging failed: ";
-      msg += vl_status;
-      logData(msg,true);
-  } else {
-    logData("VL53L8CX start_ranging success",true);
-    sensorRangingStarted = true;
-  }
-}
-
-double getSensorDistancemm() {
-  if (!sensorRangingStarted) {
-    startSensorRanging();
-  }
-  VL53L8CX_ResultsData Results;
-  uint8_t NewDataReady = 0;
-  do {
-    vl_status = sensor_vl53l8cx.check_data_ready(&NewDataReady);
-  } while (!NewDataReady);
-  if ((!vl_status) && (NewDataReady != 0)) {
-    vl_status = sensor_vl53l8cx.get_ranging_data(&Results);
-  } else {
-    String msg = "VL53L8CX get_ranging_data failed: ";
-    msg += vl_status;
-    logData(msg,true);
-    return 4001;
-  }
-  double minimumDistancemm = 10000;
-  String msg="{ms:";
-  msg += esp_millis();
-  msg += ",";
-  for (size_t i = 0; i < 16; i++)
-  {
-    if ((Results.distance_mm[i] < minimumDistancemm) && (
-      Results.target_status[i] == VL53L8CX_TARGET_STATUS_RANGE_VALID ||
-      Results.target_status[i] == VL53L8CX_TARGET_STATUS_RANGE_VALID_LARGE_PULSE ||
-      Results.target_status[i] == VL53L8CX_TARGET_STATUS_RANGE_VALID_NO_PREVIOUS 
-    )) {
-      minimumDistancemm = Results.distance_mm[i];
-    }
-    msg += "d";
-    msg += i;
-    msg += ":";
-    msg += Results.distance_mm[i];
-    msg += ",s";
-    msg += i;
-    msg += ":";
-    msg += Results.target_status[i];
-    msg += ",";
-  }
-  msg += "temp:";
-  msg += Results.silicon_temp_degc;
-  msg += "}";
-  logData(msg,false);
-  return minimumDistancemm;
-}
-
 void getCurrentData() {
 //  if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
   if (demoMode) {
@@ -373,7 +312,7 @@ void resetBaseline() {
 }
 
 void checkReconnectWiFi() {
-  if (esp_millis() - wifi_check_millis > time_between_wifi_checks_millis) {
+  if (esp_millis() - wifi_check_millis > parkPreferences.timeBetweenWifiChecksMillis) {
     if ((WiFi.status() != WL_CONNECTED)) {
       logData("Reconnecting to WiFi...",true);
       disconnectNetLogging();
@@ -409,7 +348,7 @@ void loop() {
         logData("Now Detecting Car Type...",true);
         break;
       case DETECTING_CAR_TYPE:
-        if (esp_millis() - camera_checking_millis > maxCameraCheckMillis) {
+        if (esp_millis() - camera_checking_millis > parkPreferences.maxCameraCheckMillis) {
           logData("Car Detection Timeout, set to default",true);
           currentCar = defaultCar;
           curState = CAR_TYPE_DETECTED;
@@ -424,7 +363,7 @@ void loop() {
       case SHOWING_DATA:
         getCurrentData();
         displayCurrentData();
-        if (((esp_millis() - timer_started_millis) > (unsigned long)(secsToReset * 1000))  && !carDetected) {
+        if (((esp_millis() - timer_started_millis) > (unsigned long)(parkPreferences.secsToReset * 1000))  && !carDetected) {
             logData("Timer expired and no car Detected",true);
             curState = TIMER_EXPIRED;
         }
