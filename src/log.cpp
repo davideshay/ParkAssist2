@@ -31,14 +31,14 @@ File logFile;
 void connectNetLogging() {
   bool netOK;
   if (defaultPreferences.netLogging) {
-    logClientUDP.connect(parkPreferences.logTarget, parkPreferences.logPort);
-    if (!logClientUDP.connected()) {
-      logData("UDP connection - failed",true);
-      return;
-    }
+  //  logClientUDP.connect(parkPreferences.logTarget, parkPreferences.logPort);
+  //   if (!logClientUDP.connected()) {
+  //     logData("UDP connection - failed",true);
+  //     return;
+  //   }
     netLoggingStarted = true;
-    logClientUDP.println("UDP loggin initiated");
     String msg = "UDP Logging Initiated";
+    logClientUDP.writeTo(msg.c_str(),msg.length(),parkPreferences.logTarget, parkPreferences.logPort);
     uint16_t bytes_sent = logClientUDP.broadcastTo(msg.c_str(), 44444);
     if (bytes_sent == msg.length()) {
       logData("UDP packet sent successfully",true);
