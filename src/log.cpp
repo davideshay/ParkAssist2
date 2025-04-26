@@ -1,4 +1,5 @@
 #include <log.h>
+#include <lidar.h>
 #include <AsyncUDP.h>
 
 // Variables from main.cpp
@@ -31,15 +32,9 @@ File logFile;
 void connectNetLogging() {
   bool netOK;
   if (defaultPreferences.netLogging) {
-  //  logClientUDP.connect(parkPreferences.logTarget, parkPreferences.logPort);
-  //   if (!logClientUDP.connected()) {
-  //     logData("UDP connection - failed",true);
-  //     return;
-  //   }
     netLoggingStarted = true;
     String msg = "UDP Logging Initiated";
-    logClientUDP.writeTo(msg.c_str(),msg.length(),parkPreferences.logTarget, parkPreferences.logPort);
-    uint16_t bytes_sent = logClientUDP.broadcastTo(msg.c_str(), 44444);
+    uint16_t bytes_sent = logClientUDP.writeTo(reinterpret_cast<const uint8_t*>(msg.c_str()),msg.length(),parkPreferences.logTarget, parkPreferences.logPort);
     if (bytes_sent == msg.length()) {
       logData("UDP packet sent successfully",true);
     } else {
@@ -57,7 +52,6 @@ void disconnectNetLogging() {
 }
 
 void initLogging() {
-
     serverLog.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/plain", "Hi! This is WebSerial. You can access the WebSerial interface at http://" + WiFi.localIP().toString() + "/webserial");
       });
@@ -159,8 +153,10 @@ void processConsoleMessage(uint8_t *data, size_t len) {
       logData("Cleared all preferences, including logging IP address and port.",true);  
     } else if (d == "GETPREFS") {
       getPreferences();
+    } else if (d == "CALIBRATE") {
+      calibrateSensor();
     } else {
-        logData("Invalid command. Try 'demo on' to start demo mode or 'changeip x.x.x.x to change logging ip address.",true);
+      logData("Invalid command. Try 'demo on' to start demo mode or 'changeip x.x.x.x to change logging ip address.",true);
     }
 }
 
@@ -187,18 +183,11 @@ void logData(String message, bool includeWeb = true) {
     if (defaultPreferences.webLogging && includeWeb) {WebSerial.println(message);}
     if (parkPreferences.fileLogging && okToLog) {logFile.println(message);}
     if (defaultPreferences.netLogging) {
-      // bool netOK =logClientUDP.beginPacket(parkPreferences.logTarget, parkPreferences.logPort);
-      // if (!netOK) {
-      //   Serial.println("UDP connection - beginpacket - failed");
-      //   return;
-      // }
-      uint16_t bytesSent = logClientUDP.broadcastTo(message.c_str(), 44444);
-      if (bytesSent == message.length()) {
-        Serial.println("UDP packet sent successfully");
-      } else {
-        Serial.println("UDP packet send failed");
-      }
-//      logClientUDP.endPacket();
+        uint16_t bytes_sent = logClientUDP.writeTo(reinterpret_cast<const uint8_t*>(message.c_str()),message.length(),parkPreferences.logTarget, parkPreferences.logPort);
+        if (!bytes_sent == message.length()) {
+        } else {
+          Serial.println("UDP packet send failed");
+        }
     }
 }
   

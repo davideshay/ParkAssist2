@@ -10,5 +10,6 @@
 bool initLidarSensor();
 void startSensorRanging();
 double getSensorDistancemm();
+bool calibrateSensor();
 
 #endif

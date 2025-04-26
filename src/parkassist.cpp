@@ -15,7 +15,8 @@ ParkPreferences defaultPreferences = {
   .netLogging = true,
   .webLogging = true,
   .serialLogging = true,
-  .xtalk_data = {0}
+  .xtalk_data = {0},
+  .calibrationDataSaved = false
 };
 
 String prefsNamespace = "parkassist";

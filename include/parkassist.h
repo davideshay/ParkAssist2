@@ -61,6 +61,7 @@ struct ParkPreferences {
   bool webLogging;
   bool serialLogging;
   uint8_t xtalk_data[VL53L8CX_XTALK_BUFFER_SIZE];
+  bool calibrationDataSaved;
 };
 
 double getSensorDistancemm();

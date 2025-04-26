@@ -8,27 +8,70 @@ extern bool sensorRangingStarted;
 extern ParkPreferences parkPreferences;
 bool deviceFound = false;
 
-void calibrateSensor() {
+void loadCalibrationData() {
+    if (!parkPreferences.calibrationDataSaved) {
+        logData("No calibration data saved, starting without calibration", true);
+        return;
+    }
+    uint8_t zero_xtalk_data[VL53L8CX_XTALK_BUFFER_SIZE] = {0};
+    if (memcmp(parkPreferences.xtalk_data, zero_xtalk_data, sizeof(zero_xtalk_data)) == 0) {
+        logData("Calibration Data saved, but all zeroes. Starting without calibration.", true);
+        return;
+    }
+    if (sensor_vl53l8cx.set_caldata_xtalk(parkPreferences.xtalk_data) == VL53L8CX_STATUS_OK) {
+        logData("Sensor calibrated with saved xtalk data...", true);
+    } else {
+        logData("Failed to set calibration data on sensor", true);
+    }
+}
+
+bool calibrateSensor() {
     if (!deviceFound) {
       logData("No device found, cannot calibrate sensor",true);
-      return;
+      return false;
+    }
+    if (sensorRangingStarted) {
+        logData("Sensor is already ranging, stopping", true);
+        vl_status = sensor_vl53l8cx.stop_ranging();
+        if (vl_status != VL53L8CX_STATUS_OK) {
+            String msg = "VL53L8CX stop_ranging failed: ";
+            msg += vl_status;
+            logData(msg,true);
+            return false;
+        }
+        sensorRangingStarted = false;
     }
     logData("Calibrating sensor...",true);
-    sensor_vl53l8cx.calibrate_xtalk(5, 16, 600);
+    
+    vl_status = sensor_vl53l8cx.calibrate_xtalk(5, 16, 600);
+    if (vl_status != VL53L8CX_STATUS_OK) {
+        String msg = "VL53L8CX calibrate_xtalk failed: ";
+        msg += vl_status;
+        logData(msg,true);
+        return false;
+    }
     logData("Getting xtalk data...",true);
-    sensor_vl53l8cx.get_caldata_xtalk(parkPreferences.xtalk_data);
-//    String msg = "calibrated sensor, xtalk data: ";
-    // for (size_t i = 0; i < VL53L8CX_XTALK_BUFFER_SIZE; i++)
-    // {
-    //     msg += String(xtalk_data[i]);
-    //     msg += ",";
-    // }
-//    logData(msg, true);
+    vl_status = sensor_vl53l8cx.get_caldata_xtalk(parkPreferences.xtalk_data);
+    if (vl_status != VL53L8CX_STATUS_OK) {
+        String msg = "VL53L8CX get_caldata_xtalk failed: ";
+        msg += vl_status;
+        logData(msg,true);
+        return false;
+    }
     logData("Retrieved xtalk data...",true);
-    setPreferences();
     logData("Sensor calibrated and preferences set...",true);
-    sensor_vl53l8cx.set_caldata_xtalk(parkPreferences.xtalk_data);
-    logData("Sensor calibrated with xtalk data...",true);
+    vl_status = sensor_vl53l8cx.set_caldata_xtalk(parkPreferences.xtalk_data);
+    if (vl_status != VL53L8CX_STATUS_OK) {
+        String msg = "VL53L8CX set_caldata_xtalk failed: ";
+        msg += vl_status;
+        logData(msg,true);
+        return false;
+    } else {
+        logData("Sensor calibrated with xtalk data...",true);
+        parkPreferences.calibrationDataSaved = true;
+        setPreferences();
+        return true;
+    }
 }
 
 bool scanBus() {
@@ -120,7 +163,7 @@ bool initLidarSensor() {
     Serial.println("VL53L8CX init success");
     logData("VL53L8CX init success",true);
     if (otaStarted) {return true;};
-      calibrateSensor();
+    loadCalibrationData();
     return true;
   }
 

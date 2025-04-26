@@ -152,10 +152,12 @@ void setup() {
 
   logData("OTA Update delay complete, getting preferences and starting logging",true);
 
-  // getPreferences();
-  parkPreferences = defaultPreferences;
-  initLogging();
- 
+  if (!otaStarted) {
+    getPreferences();
+    parkPreferences = defaultPreferences;
+    initLogging();
+  }
+  
   logData("OTA Updates Enabled, starting LIDAR sensor",true);
 
  
