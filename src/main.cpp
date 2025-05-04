@@ -97,7 +97,6 @@ bool otaStarted = false;
 VL53L8CX sensor_vl53l8cx(&Wire, -1);
 bool EnableAmbient = false;
 bool EnableSignal = false;
-uint8_t res = VL53L8CX_RESOLUTION_4X4;
 char vl_report[256];
 uint8_t vl_status;
 bool sensorRangingStarted = false;
@@ -116,6 +115,8 @@ boolean useMetric = false;
 boolean demoMode = false;
 double demoDistance;
 boolean demoIRBREAK = true;
+
+boolean testModeNoIR = false;;
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -154,7 +155,6 @@ void setup() {
 
   if (!otaStarted) {
     getPreferences();
-    parkPreferences = defaultPreferences;
     initLogging();
   }
   
@@ -252,12 +252,14 @@ void getIRBreak() {
 
 void getCurrentData() {
 //  if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
+  getIRBreak();
   if (demoMode) {
     currentDistance = demoDistance;
   } else {
-    double origDistance = getSensorDistancemm() / 10;
-    double corrDistance;
-    if ((corrDistance == -1 || corrDistance < 0)) {
+    DistanceResults distanceResults = getSensorDistance();
+
+    double corrDistance = -1;
+    if (distanceResults.distanceStatus != DISTANCE_OK) {
       if (realDistanceDetected) {
       // At some point, I had already detected a real distance, but now I don't
       // This is either bad sensor data (99% of the time) or could be car backing out and can no longer be seen
@@ -275,14 +277,13 @@ void getCurrentData() {
         // This is the first real distance to be detected -- accept the value without deviation check
         realDistanceDetected = true;
       }
-      corrDistance = origDistance;
+      corrDistance = distanceResults.distance_mm / 10;
     }
     
     float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
-    logDetailData(origDistance,corrDistance,estimatedDistance);
+    logDetailData(distanceResults.distance_mm,corrDistance,estimatedDistance);
     currentDistance = estimatedDistance;
   }
-  getIRBreak();
   currentDistanceEvaluation = evaluateDistance();
   dist_check_millis = esp_millis();
 };
@@ -336,7 +337,7 @@ void loop() {
     WebSerial.loop();
     switch (curState) {
       case BASELINE:
-        if (digitalRead(IR_BREAK_SENSOR) == LOW) {
+        if (digitalRead(IR_BREAK_SENSOR) == LOW && !testModeNoIR) {
           logData("IR Sensor Broken from default. Car Present",true);
           timer_started_millis = esp_millis();
           carDetected = true;

@@ -8,20 +8,22 @@ extern bool sensorRangingStarted;
 extern ParkPreferences parkPreferences;
 bool deviceFound = false;
 
-void loadCalibrationData() {
+bool loadCalibrationData() {
     if (!parkPreferences.calibrationDataSaved) {
         logData("No calibration data saved, starting without calibration", true);
-        return;
+        return false;
     }
     uint8_t zero_xtalk_data[VL53L8CX_XTALK_BUFFER_SIZE] = {0};
     if (memcmp(parkPreferences.xtalk_data, zero_xtalk_data, sizeof(zero_xtalk_data)) == 0) {
         logData("Calibration Data saved, but all zeroes. Starting without calibration.", true);
-        return;
+        return false;
     }
     if (sensor_vl53l8cx.set_caldata_xtalk(parkPreferences.xtalk_data) == VL53L8CX_STATUS_OK) {
         logData("Sensor calibrated with saved xtalk data...", true);
+        return true;
     } else {
         logData("Failed to set calibration data on sensor", true);
+        return false;
     }
 }
 
@@ -43,7 +45,7 @@ bool calibrateSensor() {
     }
     logData("Calibrating sensor...",true);
     
-    vl_status = sensor_vl53l8cx.calibrate_xtalk(5, 16, 600);
+    vl_status = sensor_vl53l8cx.calibrate_xtalk(5, 4, 600);
     if (vl_status != VL53L8CX_STATUS_OK) {
         String msg = "VL53L8CX calibrate_xtalk failed: ";
         msg += vl_status;
@@ -163,29 +165,70 @@ bool initLidarSensor() {
     Serial.println("VL53L8CX init success");
     logData("VL53L8CX init success",true);
     if (otaStarted) {return true;};
-    loadCalibrationData();
-    return true;
   }
-
+  vl_status = sensor_vl53l8cx.set_resolution(VL53L8CX_RESOLUTION_4X4);
+  if (vl_status != VL53L8CX_STATUS_OK) {
+    logData("VL53L8CX resolution set failed:" + vl_status,true);
+    return false;
+  }
+  logData("VL53L8CX resolution set OK, setting frequency",true);
+  vl_status = sensor_vl53l8cx.set_ranging_frequency_hz(20);
+  if (vl_status != VL53L8CX_STATUS_OK) {
+    logData("VL53L8CX ranging frequency set failed:" + vl_status,true);
+    return false;
+  }
+  logData("VL53L8CX ranging frequency set OK",true);  
+  return loadCalibrationData();
 }
 
-void startSensorRanging() {
+bool startSensorRanging() {
   vl_status = sensor_vl53l8cx.set_ranging_mode(VL53L8CX_RANGING_MODE_CONTINUOUS);
+  if (vl_status != VL53L8CX_STATUS_OK) {
+    String msg = "VL53L8CX set_ranging_mode failed: ";
+    msg += vl_status;
+    logData(msg,true);
+    return false;
+  }
+  vl_status = sensor_vl53l8cx.set_sharpener_percent(99);
+  if (vl_status != VL53L8CX_STATUS_OK) {
+    String msg = "VL53L8CX set_sharpener_percent failed: ";
+    msg += vl_status;
+    logData(msg,true);
+    return false;
+  }
   vl_status = sensor_vl53l8cx.start_ranging();
     if (vl_status != VL53L8CX_STATUS_OK ) {
       String msg = "VL53L8CX start_ranging failed: ";
       msg += vl_status;
       logData(msg,true);
+      return false;
   } else {
-    logData("VL53L8CX start_ranging success",true);
+//    logData("VL53L8CX start_ranging success",true);
     sensorRangingStarted = true;
   }
+  return true;
 }
 
-double getSensorDistancemm() {
+bool stopSensorRanging() {
+    vl_status = sensor_vl53l8cx.stop_ranging();
+    if (vl_status != VL53L8CX_STATUS_OK) {
+        String msg = "VL53L8CX stop_ranging failed: ";
+        msg += vl_status;
+        logData(msg,true);
+        return false;
+    }
+    return true;
+}
+
+DistanceResults getSensorDistance() {
+  DistanceResults distanceResults = {
+    .distance_mm = 0,
+    .distanceStatus = DISTANCE_INITIAL
+  };
   if (!deviceFound) {
     logData("No device found, cannot get distance",true);
-    return 10002;
+    distanceResults.distanceStatus = DISTANCE_NO_DEVICE;
+    return distanceResults;
   }
   if (!sensorRangingStarted) {
     startSensorRanging();
@@ -201,7 +244,8 @@ double getSensorDistancemm() {
     String msg = "VL53L8CX get_ranging_data failed: ";
     msg += vl_status;
     logData(msg,true);
-    return 4001;
+    distanceResults.distanceStatus = DISTANCE_RANGING_FAILED;
+    return distanceResults;
   }
   double minimumDistancemm = 10000;
   String msg="{ms:";
@@ -215,6 +259,7 @@ double getSensorDistancemm() {
       Results.target_status[i] == VL53L8CX_TARGET_STATUS_RANGE_VALID_NO_PREVIOUS 
     )) {
       minimumDistancemm = Results.distance_mm[i];
+      distanceResults.distanceStatus = DISTANCE_OK;
     }
     msg += "d";
     msg += i;
@@ -226,9 +271,14 @@ double getSensorDistancemm() {
     msg += Results.target_status[i];
     msg += ",";
   }
-  msg += "temp:";
+  msg += "min:";
+  msg += minimumDistancemm;
+  msg += ",temp:";
   msg += Results.silicon_temp_degc;
   msg += "}";
   logData(msg,false);
-  return minimumDistancemm;
+  if (distanceResults.distanceStatus == DISTANCE_OK) {
+    distanceResults.distance_mm = minimumDistancemm;
+  }
+  return distanceResults;
 }

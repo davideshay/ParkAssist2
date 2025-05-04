@@ -4,3 +4,5 @@
 .vscode/launch.json
 .vscode/ipch
 src/wificodes.h
+monitor/*.txt
+monitor/*.csv

@@ -38,6 +38,12 @@ void logPrefs(ParkPreferences logPrefs) {
     msg += logPrefs.logPort;
     msg += " secsToReset:";
     msg += logPrefs.secsToReset;
+    msg += " xtalksaved:";
+    msg += logPrefs.calibrationDataSaved;
+    msg += " first 2 bytes of xtalk data:";
+    msg += logPrefs.xtalk_data[0];
+    msg += ",";
+    msg += logPrefs.xtalk_data[1];
     logData(msg, true);   
 }
 
@@ -46,6 +52,25 @@ void clearPreferences() {
     externalPrefs.clear();
     externalPrefs.end();
     logData("Preferences cleared", true);
+}
+
+void clearNVSAndReboot() {
+    logData("Clearing NVS and Rebooting",true);
+    if (nvs_flash_erase() != ESP_OK) {
+        logData("Failed to erase NVS", true);
+        ESP.restart();
+    } else {
+        logData("NVS erased", true);
+    }
+    if (nvs_flash_init() != ESP_OK) {
+        logData("Failed to init NVS", true);
+        ESP.restart();
+    } else {
+        logData("NVS initialized", true);
+    }
+    delay(3000);
+    logData("Rebooting...", true);
+    ESP.restart();
 }
 
 void getPreferences() {
@@ -72,12 +97,14 @@ void setPreferences() {
     toSetPrefs = parkPreferences;
     getPreferences();
     if (memcmp(&toSetPrefs, &parkPreferences, sizeof(ParkPreferences)) != 0) {
+        logData("To Set prefs different than current prefs. Opening prefs RW", true);
         externalPrefs.begin(prefsNamespace.c_str(), RW_MODE);
+        logData("Preferences to set:", true);
         logPrefs(toSetPrefs);
         externalPrefs.putBytes(prefsKey.c_str(), &toSetPrefs, sizeof(toSetPrefs));
         externalPrefs.end();
         parkPreferences = toSetPrefs;
-        logData("Preferences changed, updated in external storage", true);
+        logData("Preferences changed, updated in external storage. Current prefs now:", true);
         logPrefs(parkPreferences);
     }
 

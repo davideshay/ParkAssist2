@@ -5,6 +5,7 @@
 #include <Preferences.h>
 #include <vl53l8cx.h>
 #include <log.h>
+#include <nvs_flash.h>
 
 #define TEMP_SENSOR_BUS 14
 #define SDA_PIN 19
@@ -64,10 +65,10 @@ struct ParkPreferences {
   bool calibrationDataSaved;
 };
 
-double getSensorDistancemm();
 void getPreferences();
 void setPreferences();
 void clearPreferences();
+void clearNVSAndReboot();
 
 #endif
   
