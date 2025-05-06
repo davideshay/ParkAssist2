@@ -201,9 +201,13 @@ void processConsoleMessage(uint8_t *data, size_t len)
   {
     getPreferences();
   }
-  else if (d == "CALIBRATE")
+  else if (d == "CALIBRATE1")
   {
-    calibrateSensor();
+    calibrateSensorPart1();
+  }
+  else if (d == "CALIBRATE2")
+  {
+    calibrateSensorPart2();
   }
   else if (d == "CLEARNVS")
   {

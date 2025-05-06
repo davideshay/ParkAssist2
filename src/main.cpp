@@ -83,18 +83,6 @@ PrettyOTA OTAUpdates;
 
 bool otaStarted = false;
 
-// Declare the LIDAR sensor -- -1 is because we don't use the power enable pin
-// #define VL53L8CX_DISABLE_AMBIENT_PER_SPAD
-#define VL53L8CX_DISABLE_NB_SPADS_ENABLED
-// #define VL53L8CX_DISABLE_NB_TARGET_DETECTED
-#define VL53L8CX_DISABLE_SIGNAL_PER_SPAD
-#define VL53L8CX_DISABLE_RANGE_SIGMA_MM
-// #define VL53L8CX_DISABLE_DISTANCE_MM
-#define VL53L8CX_DISABLE_REFLECTANCE_PERCENT
-// #define VL53L8CX_DISABLE_TARGET_STATUS
-#define VL53L8CX_DISABLE_MOTION_INDICATOR
-
-VL53L8CX sensor_vl53l8cx(&Wire, -1);
 bool EnableAmbient = false;
 bool EnableSignal = false;
 char vl_report[256];
@@ -309,7 +297,7 @@ void resetBaseline() {
   realDistanceDetected = false;
   currentDistance = 0;
   closeLogFile();
-  sensor_vl53l8cx.stop_ranging();
+  stopSensorRanging();
   sensorRangingStarted = false;
   carDetected = false;
 }

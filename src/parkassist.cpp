@@ -15,7 +15,7 @@ ParkPreferences defaultPreferences = {
   .netLogging = true,
   .webLogging = true,
   .serialLogging = true,
-  .xtalk_data = {0},
+  .calData = {},
   .calibrationDataSaved = false
 };
 
@@ -41,9 +41,9 @@ void logPrefs(ParkPreferences logPrefs) {
     msg += " xtalksaved:";
     msg += logPrefs.calibrationDataSaved;
     msg += " first 2 bytes of xtalk data:";
-    msg += logPrefs.xtalk_data[0];
+    msg += logPrefs.calData.struct_version;
     msg += ",";
-    msg += logPrefs.xtalk_data[1];
+    msg += logPrefs.calData.customer.ref_spad_man__num_requested_ref_spads;
     logData(msg, true);   
 }
 

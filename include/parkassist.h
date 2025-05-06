@@ -3,8 +3,8 @@
 
 #include <FastLED.h>
 #include <Preferences.h>
-#include <vl53l8cx.h>
 #include <log.h>
+#include <lidar.h>
 #include <nvs_flash.h>
 
 #define TEMP_SENSOR_BUS 14
@@ -61,7 +61,7 @@ struct ParkPreferences {
   bool netLogging;
   bool webLogging;
   bool serialLogging;
-  uint8_t xtalk_data[VL53L8CX_XTALK_BUFFER_SIZE];
+  VL53L4CX_CalibrationData_t calData;
   bool calibrationDataSaved;
 };
 
