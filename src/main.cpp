@@ -16,6 +16,7 @@
 #include <SimpleKalmanFilter.h>
 #include <vl53l8cx.h>
 #include <lidar.h>
+#include <filter.h>
 
 
 // 
@@ -35,7 +36,7 @@
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
 
 carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 88, .maxFrontDistanceCm = 60, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
+  { .targetFrontDistanceCm = 86, .maxFrontDistanceCm = 60, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
      .carLogo = 
     {
       0b0100100100000000,
@@ -76,6 +77,7 @@ const int64_t time_between_dist_checks_millis = 120;
 int64_t temp_check_millis = 0;
 const int64_t time_between_temp_checks_millis = 60000;
 SimpleKalmanFilter kalmanFilter(75,75,3);
+ExponentialFilter<float> distanceFilter(80,defaultCar.sensorDistanceFromFrontCm);
 uint64_t wifi_check_millis = 0;
 
 AsyncWebServer serverOTA(80);
@@ -254,9 +256,9 @@ void getCurrentData() {
     bool defaultDistance = false;
     if (distanceResults.distanceStatus != DISTANCE_OK) {
       if (realDistanceDetected) {
-      // At some point, I had already detected a real distance, but now I don't
-      // This is either bad sensor data (99% of the time) or could be car backing out and can no longer be seen
-      return;
+        // At some point, I had already detected a real distance, but now I don't
+        // This is either bad sensor data (99% of the time) or could be car backing out and can no longer be seen
+        return;
       } else {
       // Never had a real distance detected , default value to the max distance in the garage (distance to door)
         corrDistance = currentCar.sensorDistanceFromFrontCm;
@@ -278,7 +280,8 @@ void getCurrentData() {
       currentDistance = corrDistance;
     } else {
       float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
-      logDetailData(distanceResults.distance_mm,corrDistance,estimatedDistance);
+      distanceFilter.Filter(corrDistance);
+      logDetailData(distanceResults.distance_mm,corrDistance,estimatedDistance,distanceFilter.Current());
       currentDistance = estimatedDistance;
     }
   }
@@ -305,6 +308,7 @@ void resetBaseline() {
   carFirstClearedSensorDistanceFromFront = 0;
   realDistanceDetected = false;
   currentDistance = 0;
+  distanceFilter.SetCurrent(defaultCar.sensorDistanceFromFrontCm);
   closeLogFile();
   stopSensorRanging();
   sensorRangingStarted = false;

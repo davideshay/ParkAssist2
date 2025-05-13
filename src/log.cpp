@@ -338,7 +338,7 @@ void logCurrentData()
   logging_millis = esp_millis();
 }
 
-void logDetailData(double od, double cd, float ed)
+void logDetailData(double od, double cd, float ed, float ed2)
 {
   if (!parkPreferences.fileLogging && !parkPreferences.webLogging && !parkPreferences.netLogging)
   {
@@ -353,6 +353,8 @@ void logDetailData(double od, double cd, float ed)
   logLine += cd;
   logLine += ",ed:";
   logLine += ed;
+  logLine += ",ed2:";
+  logLine += ed2;
   logLine += "}";
   logData(logLine, false);
 }

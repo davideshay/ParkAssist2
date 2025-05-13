@@ -17,7 +17,7 @@ void openLogFileRead();
 void logData(String message, bool includeWeb);
 void initLogging();
 void logCurrentData();
-void logDetailData(double od,double cd,float ed);
+void logDetailData(double od,double cd,float ed, float ed2);
 void closeLogFile();
 void processConsoleMessage(uint8_t *data, size_t len);
 

@@ -326,6 +326,7 @@ bool getSingleSensorMeasurement(VL53L4CX_MultiRangingData_t *pMultiRangingData) 
     vl_status = sensor_vl53l4cx.VL53L4CX_GetMultiRangingData(pMultiRangingData);
     return true;
   } else {
+    logData("Get Measurement Data Ready called failed, or data not ready:" + vl_status,true);
     return false;
   }
 }
@@ -342,6 +343,7 @@ DistanceResults getSensorDistance() {
   }
   if (!sensorRangingStarted) {
     if (!startSensorRanging()) {
+      logData("Couldn't start sensor ranging during distance retrieval",true);
       distanceResults.distanceStatus = DISTANCE_RANGING_FAILED;
       return distanceResults;
     };
@@ -358,9 +360,19 @@ DistanceResults getSensorDistance() {
     distanceResults.distanceStatus = DISTANCE_RANGING_FAILED;
     return distanceResults;
   }
+  String msg1 = "First measurement: numobj:";
+  msg1 += pMultiRangingData->NumberOfObjectsFound;
+  msg1 += " rangestat:";
+  if (pMultiRangingData->NumberOfObjectsFound > 0) {
+    msg1 += pMultiRangingData->RangeData[0].RangeStatus;
+    msg1 += " firstdist:";
+    msg1 += pMultiRangingData->RangeData[0].RangeMilliMeter;
+  }
+  logData(msg1,false);
   // If this is the first measurement with a wrap-around status, get another measurement
   if (pMultiRangingData->NumberOfObjectsFound > 0 &&
       pMultiRangingData->RangeData[0].RangeStatus == VL53L4CX_RANGESTATUS_RANGE_VALID_NO_WRAP_CHECK_FAIL ) {
+      logData("First measurement was wrap-around. Getting a second measurement...",false);
       getSuccess = getSingleSensorMeasurement(pMultiRangingData);
       if (!getSuccess) {
         String msg = "VL53L4CX get single measurement failed - ranging failure";
