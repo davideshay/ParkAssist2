@@ -42,7 +42,9 @@ void logPrefs(ParkPreferences logPrefs) {
     msg += logPrefs.calibrationDataSaved;
     msg += " first 2 bytes of xtalk data:";
     msg += logPrefs.calData.struct_version;
-    msg += ",";
+    msg += ",ms between wifi checks:";
+    msg += logPrefs.timeBetweenWifiChecksMillis;
+    msg += ",spads:";
     msg += logPrefs.calData.customer.ref_spad_man__num_requested_ref_spads;
     logData(msg, true);   
 }
@@ -86,7 +88,7 @@ void getPreferences() {
         logData("Preferences not found, created using defaults", true);
     }
     externalPrefs.end();
-    connectNetLogging();
+//    connectNetLogging();
     logData("Preferences after get function:",true);
     logPrefs(parkPreferences);
 
@@ -106,6 +108,8 @@ void setPreferences() {
         parkPreferences = toSetPrefs;
         logData("Preferences changed, updated in external storage. Current prefs now:", true);
         logPrefs(parkPreferences);
+    } else {
+        logData("Preferences to set are the same as current prefs. No changes made.", true);
     }
 
 }

@@ -99,6 +99,23 @@ void initLogging()
   serverLogDetail.begin();
 }
 
+// web Console available commands:
+// demo on|off - turn demo mode on or off
+// irbreak on|off - turn demo IR break sensor on or off
+// start - set car detected, show distance continuously until timeout
+// real - show real distance from sensor (first measure will be invalid, need to do two)
+// move xx - move demo car to a specific distance from the sensor
+// changeip x.x.x.x - change the IP address of the net logging target
+// clearprefs - clear all preferences
+// getprefs - get all preferences and show on log
+// calibrate1 - calibrate sensor part 1 -- need a high reflective surface set 14cm above the sensor
+// calibrate2 - calibrate sensor part 2 -- need a dark surface set 60cm above the sensor
+// clearnvs - clear NVS and reboot
+// reboot - reboot the ESP32
+// reset -- go back to baseline settings
+
+
+
 void processConsoleMessage(uint8_t *data, size_t len)
 {
   Serial.printf("Received %lu bytes from WebSerial: ", len);
@@ -213,6 +230,29 @@ void processConsoleMessage(uint8_t *data, size_t len)
   {
     clearNVSAndReboot();
   }
+  else if (d == "REBOOT")
+  {
+    logData("Rebooting ESP32", true);
+    delay(1000);
+    ESP.restart();
+  }
+  else if (d == "RESET")
+  {
+    logData("Resetting to baseline settings", true);
+    resetBaseline();
+  }
+  else if (d == "LOGGING ON")
+  {
+    parkPreferences.fileLogging = true;
+    setPreferences();
+    logData("File logging enabled", true);
+  }
+  else if (d == "LOGGING OFF")
+  {
+    parkPreferences.fileLogging = false;
+    setPreferences();
+    logData("File logging disabled", true);
+  }
   else
   {
     logData("Invalid command. Try 'demo on' to start demo mode or 'changeip x.x.x.x to change logging ip address.", true);
@@ -257,9 +297,6 @@ void logData(String message, bool includeWeb = true)
   {
     uint16_t bytes_sent = logClientUDP.writeTo(reinterpret_cast<const uint8_t *>(message.c_str()), message.length(), parkPreferences.logTarget, parkPreferences.logPort);
     if (!bytes_sent == message.length())
-    {
-    }
-    else
     {
       Serial.println("UDP packet send failed");
     }

@@ -69,6 +69,7 @@ void getPreferences();
 void setPreferences();
 void clearPreferences();
 void clearNVSAndReboot();
+void resetBaseline();
 
 #endif
   

@@ -6,3 +6,4 @@
 src/wificodes.h
 monitor/*.txt
 monitor/*.csv
+**/.DS_Store

@@ -35,7 +35,7 @@
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
 
 carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 79, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
+  { .targetFrontDistanceCm = 88, .maxFrontDistanceCm = 60, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
      .carLogo = 
     {
       0b0100100100000000,
@@ -72,7 +72,7 @@ stateOpts curState = BASELINE;
 int64_t camera_checking_millis = 0;
 int64_t timer_started_millis = 0;
 int64_t dist_check_millis = 0;
-const int64_t time_between_dist_checks_millis = 60;
+const int64_t time_between_dist_checks_millis = 120;
 int64_t temp_check_millis = 0;
 const int64_t time_between_temp_checks_millis = 60000;
 SimpleKalmanFilter kalmanFilter(75,75,3);
@@ -93,18 +93,19 @@ double currentDistance;
 const double maxDistanceDeltaOK = 50;
 distanceEvaluation currentDistanceEvaluation;
 double carFirstDetectedDistanceFromFront;
-boolean carFirstDetected = false;
+bool carFirstDetected = false;
 double carFirstClearedSensorDistanceFromFront;
-boolean carFirstClearedSensor = false;
+bool carFirstClearedSensor = false;
 double realDistanceDetected = false;
-boolean carDetected;
-boolean useMetric = false;
+bool carDetected;
+bool useMetric = false;
+bool alreadyDisplayTimedOut = false;
 
-boolean demoMode = false;
+bool demoMode = false;
 double demoDistance;
-boolean demoIRBREAK = true;
+bool demoIRBREAK = false;
 
-boolean testModeNoIR = false;;
+bool testModeNoIR = true;
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -124,6 +125,8 @@ void setup() {
   Serial.println(ssid);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+  Serial.print("MAC address: ");
+  Serial.println(WiFi.macAddress());
 
   serverOTA.begin();
   Serial.println("OTA HTTP server started");
@@ -239,7 +242,8 @@ void getIRBreak() {
 }
 
 void getCurrentData() {
-//  if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
+  if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
+  dist_check_millis = esp_millis();
   getIRBreak();
   if (demoMode) {
     currentDistance = demoDistance;
@@ -247,6 +251,7 @@ void getCurrentData() {
     DistanceResults distanceResults = getSensorDistance();
 
     double corrDistance = -1;
+    bool defaultDistance = false;
     if (distanceResults.distanceStatus != DISTANCE_OK) {
       if (realDistanceDetected) {
       // At some point, I had already detected a real distance, but now I don't
@@ -255,6 +260,7 @@ void getCurrentData() {
       } else {
       // Never had a real distance detected , default value to the max distance in the garage (distance to door)
         corrDistance = currentCar.sensorDistanceFromFrontCm;
+        defaultDistance = true;
       }
     } else {
       // A "real" distance has come in from the sensor. If it deviates by more than 50cm from the current distance
@@ -267,13 +273,16 @@ void getCurrentData() {
       }
       corrDistance = distanceResults.distance_mm / 10;
     }
-    
-    float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
-    logDetailData(distanceResults.distance_mm,corrDistance,estimatedDistance);
-    currentDistance = estimatedDistance;
+    if (defaultDistance) {
+      logData("Default distance used, no real distance detected",false);
+      currentDistance = corrDistance;
+    } else {
+      float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
+      logDetailData(distanceResults.distance_mm,corrDistance,estimatedDistance);
+      currentDistance = estimatedDistance;
+    }
   }
   currentDistanceEvaluation = evaluateDistance();
-  dist_check_millis = esp_millis();
 };
 
 void displayCurrentData() {
@@ -300,6 +309,7 @@ void resetBaseline() {
   stopSensorRanging();
   sensorRangingStarted = false;
   carDetected = false;
+  alreadyDisplayTimedOut = false;
 }
 
 void checkReconnectWiFi() {
@@ -354,9 +364,20 @@ void loop() {
       case SHOWING_DATA:
         getCurrentData();
         displayCurrentData();
-        if (((esp_millis() - timer_started_millis) > (unsigned long)(parkPreferences.secsToReset * 1000))  && !carDetected) {
-            logData("Timer expired and no car Detected",true);
-            curState = TIMER_EXPIRED;
+        if (((esp_millis() - timer_started_millis) > (unsigned long)(parkPreferences.secsToReset * 1000))) {
+            if (carDetected) {
+              if (alreadyDisplayTimedOut) {
+                logData("Restarted timer expired even though car is still detected",true);
+                curState = TIMER_EXPIRED;
+              } else {
+                alreadyDisplayTimedOut = true;
+                timer_started_millis = esp_millis();
+                logData("Timer expired but car still detected. Resetting timer 1 time.",true);
+              }
+            } else {
+              logData("Timer expired and car not detected, turning off display and resetting to baseline",true);
+              curState = TIMER_EXPIRED;
+            }
         }
         break;
       case TIMER_EXPIRED:

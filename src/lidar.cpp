@@ -23,17 +23,18 @@ bool loadCalibrationData() {
         logData("Failed to set calibration data on sensor", true);
         return false;
     }
-    if (sensor_vl53l4cx.VL53L4CX_SetXTalkCompensationEnable(1) == VL53L4CX_ERROR_NONE) {
-        logData("XTalk compensation enabled", true);
-        return true;
-    } else {
-        logData("Failed to enable XTalk compensation", true);
-        return false;
-    }
+    return true;
+}
+
+void printPrefsData() {
+    logData("Preferences version:",true);
+    logData(String(parkPreferences.calData.struct_version),true);
+    logData("opt center: " + String(parkPreferences.calData.optical_centre.x_centre) + "," + String(parkPreferences.calData.optical_centre.y_centre),true);
 }
 
 bool getCalibrationData() {
-    logData("Getting calibration data...",true);
+    logData("Getting calibration data...Before Prefs:",true);
+    printPrefsData();
     vl_status = sensor_vl53l4cx.VL53L4CX_GetCalibrationData(&parkPreferences.calData);
     if (vl_status != VL53L4CX_ERROR_NONE) {
         String msg = "VL53L4CX get calibration data failed: ";
@@ -41,11 +42,14 @@ bool getCalibrationData() {
         logData(msg,true);
         return false;
     }
-    logData("Put Calibration Data into ParkPreferences",true);
+    logData("Put Calibration Data into ParkPreferences. After prefs:",true);
+    printPrefsData();
     return true;
 }
 
 bool setCalibrationData() {
+    logData("Setting calibration data...current prefs are:",true);
+    printPrefsData();
     vl_status = sensor_vl53l4cx.VL53L4CX_SetCalibrationData(&parkPreferences.calData);
     if (vl_status != VL53L4CX_ERROR_NONE) {
         String msg = "VL53L8CX Set calibration data failed: ";
@@ -53,7 +57,7 @@ bool setCalibrationData() {
         logData(msg,true);
         return false;
     } else {
-        logData("Sensor calibrated with xtalk data...",true);
+        logData("Sensor calibrated with calibration data...",true);
         return true;
     }
 }
@@ -88,10 +92,15 @@ bool calibrateSensorPart1() {
         logData(msg,true);
         return false;
     }
+    logData("RefSPAD complete, proceeding to get calibration data...",true);
+    delay(300);
 
     if (!getCalibrationData()) { return false;}
+
+    logData("Got calibration data, now setting it...",true);
+    delay(300);
     if (!setCalibrationData()) { return false;}
-    
+    delay(300);
     logData("Calibrating refSPAD...now doing offset",true);
     vl_status = sensor_vl53l4cx.VL53L4CX_PerformOffsetPerVcselCalibration(140);
     if (vl_status != VL53L4CX_ERROR_NONE) {
@@ -100,7 +109,10 @@ bool calibrateSensorPart1() {
         logData(msg,true);
         return false;
     }
+    delay(300);
+    logData("Offset calibration complete, saving calibration data...",true);
     if (!getCalibrationData()) { return false;}
+    delay(300);
     if (!setCalibrationData()) { return false;}
     return true;
 }
@@ -119,10 +131,14 @@ bool calibrateSensorPart2() {
         logData(msg,true);
         return false;
     }
+    logData("XTalk calibration complete, proceeding to get calibration data...",true);
 
     if (!getCalibrationData()) { return false;}
+    logData("Got calibration data, now setting it...",true);
     if (!setCalibrationData()) { return false;}
+    logData("Calibration data set, now saving to preferences...",true);
     saveCalibrationDataToPrefs();
+    return true;
 }
 
 bool scanBus() {
@@ -203,14 +219,21 @@ bool initLidarSensor() {
     logData("VL53L4CX Init Sensor success",true);
   }
 
-  if (!loadCalibrationData()) {
-    logData("VL53L4CX load calibration data failed",true);
-    return false;
+  if (parkPreferences.calibrationDataSaved) {
+    logData("VL53L4CX calibration data saved, loading...",true);
+    if (!loadCalibrationData()) {
+        logData("VL53L4CX load calibration data failed. Proceeding without calibration.",true);
+        return false;
+    } else {
+        logData("VL53L4CX load calibration data success",true);
+    }
   } else {
-    logData("VL53L4CX load calibration data success",true);
+    logData("VL53L4CX no calibration data saved, starting without calibration",true);
   }
-  
-  vl_status = sensor_vl53l4cx.VL53L4CX_SetMeasurementTimingBudgetMicroSeconds(66666);
+
+  if (!parkPreferences.calibrationDataSaved) {return true;};
+
+  vl_status = sensor_vl53l4cx.VL53L4CX_SetMeasurementTimingBudgetMicroSeconds(100000);
   if (vl_status != VL53L4CX_ERROR_NONE) {
     String msg = "VL53L4CX Set Measurement Timing Budget failed: ";
     msg += vl_status;
@@ -249,6 +272,16 @@ bool initLidarSensor() {
   } else {
     logData("VL53L4CX Set Offset Correction Mode success",true);
   }
+
+  if (sensor_vl53l4cx.VL53L4CX_SetXTalkCompensationEnable(1) == VL53L4CX_ERROR_NONE) {
+        logData("XTalk compensation enabled", true);
+  } else {
+        logData("Failed to enable XTalk compensation", true);
+        return false;
+  }
+  logData("Allowing sensor to settle before starting main loop...",true);
+  delay(1000);
+  logData("Sensor ready for ranging...",true);
   return true;
 }
 
@@ -284,6 +317,19 @@ bool stopSensorRanging() {
     return true;
 }
 
+bool getSingleSensorMeasurement(VL53L4CX_MultiRangingData_t *pMultiRangingData) {
+  uint8_t NewDataReady = 0;
+  do {
+    vl_status = sensor_vl53l4cx.VL53L4CX_GetMeasurementDataReady(&NewDataReady);
+  } while (!NewDataReady);
+  if ((!vl_status) && (NewDataReady != 0)) {
+    vl_status = sensor_vl53l4cx.VL53L4CX_GetMultiRangingData(pMultiRangingData);
+    return true;
+  } else {
+    return false;
+  }
+}
+
 DistanceResults getSensorDistance() {
   DistanceResults distanceResults = {
     .distance_mm = 0,
@@ -302,19 +348,27 @@ DistanceResults getSensorDistance() {
   }
   VL53L4CX_MultiRangingData_t MultiRangingData;
   VL53L4CX_MultiRangingData_t *pMultiRangingData = &MultiRangingData;
-  uint8_t NewDataReady = 0;
   int numObjectsFound = 0;
-  do {
-    vl_status = sensor_vl53l4cx.VL53L4CX_GetMeasurementDataReady(&NewDataReady);
-  } while (!NewDataReady);
-  if ((!vl_status) && (NewDataReady != 0)) {
-    vl_status = sensor_vl53l4cx.VL53L4CX_GetMultiRangingData(pMultiRangingData);
-  } else {
-    String msg = "VL53L4CX get multi ranging data failed: ";
+  bool getSuccess;
+  getSuccess = getSingleSensorMeasurement(pMultiRangingData);
+  if (!getSuccess) {
+    String msg = "VL53L4CX get single measurement failed - ranging failure";
     msg += vl_status;
     logData(msg,true);
     distanceResults.distanceStatus = DISTANCE_RANGING_FAILED;
     return distanceResults;
+  }
+  // If this is the first measurement with a wrap-around status, get another measurement
+  if (pMultiRangingData->NumberOfObjectsFound > 0 &&
+      pMultiRangingData->RangeData[0].RangeStatus == VL53L4CX_RANGESTATUS_RANGE_VALID_NO_WRAP_CHECK_FAIL ) {
+      getSuccess = getSingleSensorMeasurement(pMultiRangingData);
+      if (!getSuccess) {
+        String msg = "VL53L4CX get single measurement failed - ranging failure";
+        msg += vl_status;
+        logData(msg,true);
+        distanceResults.distanceStatus = DISTANCE_RANGING_FAILED;
+        return distanceResults;
+      }
   }
   numObjectsFound = pMultiRangingData->NumberOfObjectsFound;
   double minimumDistancemm = 10000;
@@ -327,30 +381,33 @@ DistanceResults getSensorDistance() {
       pMultiRangingData->RangeData[i].RangeStatus == VL53L4CX_RANGESTATUS_RANGE_VALID ||
       pMultiRangingData->RangeData[i].RangeStatus == VL53L4CX_RANGESTATUS_RANGE_VALID_MERGED_PULSE)
     ) {
-      minimumDistancemm = pMultiRangingData->RangeData[i].RangeMinMilliMeter;
+      minimumDistancemm = pMultiRangingData->RangeData[i].RangeMilliMeter;
       distanceResults.distanceStatus = DISTANCE_OK;
     }
     msg += "d";
     msg += i;
     msg += ":";
-    msg += pMultiRangingData->RangeData[i].RangeMilliMeter;
+    msg += String(pMultiRangingData->RangeData[i].RangeMilliMeter);
     msg += ",s";
     msg += i;
     msg += ":";
     msg += pMultiRangingData->RangeData[i].RangeStatus;
-    msg += ",";
-    msg += "mi" + i;
+    msg += ",mi";
+    msg +=  i;
     msg += ":";
-    msg += pMultiRangingData->RangeData[i].RangeMinMilliMeter;
-    msg += ",";
-    msg += "mx" + i;
+    msg += String(pMultiRangingData->RangeData[i].RangeMinMilliMeter);
+    msg += ",mx";
+    msg += i;
     msg += ":";
-    msg += pMultiRangingData->RangeData[i].RangeMaxMilliMeter;
+    msg += String(pMultiRangingData->RangeData[i].RangeMaxMilliMeter);
+    msg += ",";
   }
-  msg += "min:";
-  msg += minimumDistancemm;
-  msg += "},";
-  logData(msg,false);
+  if (numObjectsFound > 0) {
+    msg += "min:";
+    msg += String(minimumDistancemm);
+    msg += "},";
+    logData(msg,false);
+  }
   if (distanceResults.distanceStatus == DISTANCE_OK) {
     distanceResults.distance_mm = minimumDistancemm;
   }
