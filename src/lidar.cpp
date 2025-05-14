@@ -326,16 +326,19 @@ bool stopSensorRanging() {
 
 bool getSingleSensorMeasurement(VL53L4CX_MultiRangingData_t *pMultiRangingData) {
   uint8_t NewDataReady = 0;
+  bool getSuccess = false;
   do {
     vl_status = sensor_vl53l4cx.VL53L4CX_GetMeasurementDataReady(&NewDataReady);
-  } while (!NewDataReady);
+  } while (NewDataReady == 0);
   if ((!vl_status) && (NewDataReady != 0)) {
     vl_status = sensor_vl53l4cx.VL53L4CX_GetMultiRangingData(pMultiRangingData);
-    return true;
+    getSuccess=(vl_status==0);
   } else {
     logData("Get Measurement Data Ready called failed, or data not ready:" + vl_status,true);
-    return false;
+    getSuccess=false;
   }
+  sensor_vl53l4cx.VL53L4CX_ClearInterruptAndStartMeasurement();
+  return getSuccess;
 }
 
 bool isValidDistance(VL53L4CX_MultiRangingData_t *pMultiRangingData) {
@@ -347,6 +350,42 @@ bool isValidDistance(VL53L4CX_MultiRangingData_t *pMultiRangingData) {
     return true;
   }
   return false;
+}
+
+void logDetailedDistance(String desc,VL53L4CX_MultiRangingData_t *pMultiRangingData) {
+  String msg="{desc:" + desc + ",ms:";
+  msg += esp_millis();
+  msg += ",";
+  for (size_t i = 0; i < pMultiRangingData->NumberOfObjectsFound; i++)
+  {
+    msg += "d";
+    msg += i;
+    msg += ":";
+    msg += String(pMultiRangingData->RangeData[i].RangeMilliMeter);
+    msg += ",s";
+    msg += i;
+    msg += ":";
+    msg += pMultiRangingData->RangeData[i].RangeStatus;
+    msg += ",mi";
+    msg +=  i;
+    msg += ":";
+    msg += String(pMultiRangingData->RangeData[i].RangeMinMilliMeter);
+    msg += ",mx";
+    msg += i;
+    msg += ":";
+    msg += String(pMultiRangingData->RangeData[i].RangeMaxMilliMeter);
+    msg += ",";
+  }
+  msg += "esrc:";
+  msg += pMultiRangingData->EffectiveSpadRtnCount;
+  msg += ",hxvc:";
+  msg += pMultiRangingData->HasXtalkValueChanged;
+  msg += ",nobj:";
+  msg += pMultiRangingData->NumberOfObjectsFound;
+  msg += ",strmcnt:";
+  msg += pMultiRangingData->StreamCount;
+  msg += "}";
+  logData(msg,false);
 }
 
 DistanceResults getSensorDistance() {
@@ -371,6 +410,7 @@ DistanceResults getSensorDistance() {
   int numObjectsFound = 0;
   bool getSuccess;
   getSuccess = getSingleSensorMeasurement(pMultiRangingData);
+  logDetailedDistance("firstread",pMultiRangingData);
   if (!getSuccess) {
     String msg = "VL53L4CX get single measurement failed - ranging failure";
     msg += vl_status;
@@ -378,22 +418,14 @@ DistanceResults getSensorDistance() {
     distanceResults.distanceStatus = DISTANCE_RANGING_FAILED;
     return distanceResults;
   }
-  String msg1 = "First measurement: numobj:";
-  msg1 += pMultiRangingData->NumberOfObjectsFound;
-  msg1 += " rangestat:";
-  if (pMultiRangingData->NumberOfObjectsFound > 0) {
-    msg1 += pMultiRangingData->RangeData[0].RangeStatus;
-    msg1 += " firstdist:";
-    msg1 += pMultiRangingData->RangeData[0].RangeMilliMeter;
-  }
-  logData(msg1,false);
   // If this is first measurement and there are no objects found
   // or it's a wrap-around, try 3 times to get a good measurement
   if ( !gotFirstMeasurement) {
     int attempts = 0;
-    while (attempts < 3 && (!getSuccess || !isValidDistance(pMultiRangingData))) {
+    while (attempts < 5 && (!getSuccess || !isValidDistance(pMultiRangingData))) {
       logData("Retrying first measurement...", false);
       getSuccess = getSingleSensorMeasurement(pMultiRangingData);
+      logDetailedDistance("retryread:"+attempts,pMultiRangingData);
       attempts++;
     }
     if (!getSuccess || !isValidDistance(pMultiRangingData)) {
@@ -406,9 +438,6 @@ DistanceResults getSensorDistance() {
   
   numObjectsFound = pMultiRangingData->NumberOfObjectsFound;
   double minimumDistancemm = 10000;
-  String msg="{ms:";
-  msg += esp_millis();
-  msg += ",";
   for (size_t i = 0; i < numObjectsFound; i++)
   {
     if ((pMultiRangingData->RangeData[i].RangeMilliMeter < minimumDistancemm) && (
@@ -418,33 +447,10 @@ DistanceResults getSensorDistance() {
       minimumDistancemm = pMultiRangingData->RangeData[i].RangeMilliMeter;
       distanceResults.distanceStatus = DISTANCE_OK;
     }
-    msg += "d";
-    msg += i;
-    msg += ":";
-    msg += String(pMultiRangingData->RangeData[i].RangeMilliMeter);
-    msg += ",s";
-    msg += i;
-    msg += ":";
-    msg += pMultiRangingData->RangeData[i].RangeStatus;
-    msg += ",mi";
-    msg +=  i;
-    msg += ":";
-    msg += String(pMultiRangingData->RangeData[i].RangeMinMilliMeter);
-    msg += ",mx";
-    msg += i;
-    msg += ":";
-    msg += String(pMultiRangingData->RangeData[i].RangeMaxMilliMeter);
-    msg += ",";
-  }
-  if (numObjectsFound > 0) {
-    msg += "min:";
-    msg += String(minimumDistancemm);
-    msg += "},";
-    logData(msg,false);
   }
   if (distanceResults.distanceStatus == DISTANCE_OK) {
     distanceResults.distance_mm = minimumDistancemm;
   }
-  sensor_vl53l4cx.VL53L4CX_ClearInterruptAndStartMeasurement();
+
   return distanceResults;
 }

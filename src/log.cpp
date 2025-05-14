@@ -205,7 +205,7 @@ void processConsoleMessage(uint8_t *data, size_t len)
     newIP.fromString(newIPs);
     disconnectNetLogging();
     parkPreferences.logTarget = newIP;
-    setPreferences();
+    //setPreferences();
     connectNetLogging();
     logClientUDP.println("Changed netlogging to this IP address: " + newIPs);
   }
@@ -240,6 +240,12 @@ void processConsoleMessage(uint8_t *data, size_t len)
   {
     logData("Resetting to baseline settings", true);
     resetBaseline();
+  }
+  else if (d == "BUSRESET")
+  {
+    logData("Resetting I2C bus, restarting LIDAR sensor",true);
+    Wire.end();
+    initLidarSensor();
   }
   else if (d == "LOGGING ON")
   {
@@ -295,7 +301,8 @@ void logData(String message, bool includeWeb = true)
   }
   if (defaultPreferences.netLogging)
   {
-    uint16_t bytes_sent = logClientUDP.writeTo(reinterpret_cast<const uint8_t *>(message.c_str()), message.length(), parkPreferences.logTarget, parkPreferences.logPort);
+    uint16_t bytes_sent = logClientUDP.writeTo(reinterpret_cast<const uint8_t *>(message.c_str()), message.length(), WiFi.broadcastIP(), parkPreferences.logPort);
+//    uint16_t bytes_sent = logClientUDP.broadcastTo((message.c_str()),parkPreferences.logPort);
     if (!bytes_sent == message.length())
     {
       Serial.println("UDP packet send failed");

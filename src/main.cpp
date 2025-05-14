@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <parkassist.h>
 #include <WiFi.h>
-#include <AsyncTCP.h>
 #include <WiFiClient.h>
 #include <ESPAsyncWebServer.h>
 #include <WebSerial.h>
@@ -14,7 +13,6 @@
 #include <FastLED.h>
 #include <PrettyOTA.h>
 #include <SimpleKalmanFilter.h>
-#include <vl53l8cx.h>
 #include <lidar.h>
 #include <filter.h>
 
@@ -77,7 +75,7 @@ const int64_t time_between_dist_checks_millis = 120;
 int64_t temp_check_millis = 0;
 const int64_t time_between_temp_checks_millis = 60000;
 SimpleKalmanFilter kalmanFilter(75,75,3);
-ExponentialFilter<float> distanceFilter(80,defaultCar.sensorDistanceFromFrontCm);
+ExponentialFilter<float> distanceFilter(65,defaultCar.sensorDistanceFromFrontCm);
 uint64_t wifi_check_millis = 0;
 
 AsyncWebServer serverOTA(80);
@@ -282,7 +280,8 @@ void getCurrentData() {
       float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
       distanceFilter.Filter(corrDistance);
       logDetailData(distanceResults.distance_mm,corrDistance,estimatedDistance,distanceFilter.Current());
-      currentDistance = estimatedDistance;
+//      currentDistance = estimatedDistance;
+      currentDistance = distanceFilter.Current();
     }
   }
   currentDistanceEvaluation = evaluateDistance();
