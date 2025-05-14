@@ -107,7 +107,7 @@ bool demoMode = false;
 double demoDistance;
 bool demoIRBREAK = false;
 
-bool testModeNoIR = true;
+bool testModeNoIR = false;
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -310,10 +310,9 @@ void resetBaseline() {
   currentDistance = 0;
   distanceFilter.SetCurrent(defaultCar.sensorDistanceFromFrontCm);
   closeLogFile();
-  stopSensorRanging();
-  sensorRangingStarted = false;
   carDetected = false;
   alreadyDisplayTimedOut = false;
+  resetLidarBaseline();
 }
 
 void checkReconnectWiFi() {

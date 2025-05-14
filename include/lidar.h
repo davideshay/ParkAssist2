@@ -27,5 +27,6 @@ bool stopSensorRanging();
 DistanceResults getSensorDistance();
 bool calibrateSensorPart1();
 bool calibrateSensorPart2();
+void resetLidarBaseline();
 
 #endif

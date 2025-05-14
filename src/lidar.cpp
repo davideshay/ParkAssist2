@@ -7,6 +7,7 @@ extern bool otaStarted;
 extern bool sensorRangingStarted;
 extern ParkPreferences parkPreferences;
 bool deviceFound = false;
+bool gotFirstMeasurement = false;
 
 bool loadCalibrationData() {
     if (!parkPreferences.calibrationDataSaved) {
@@ -178,6 +179,11 @@ bool scanBus() {
   }
 }
 
+void resetLidarBaseline() {
+  stopSensorRanging();
+  gotFirstMeasurement = false;
+}
+
 bool initLidarSensor() {
 
   bool i2c_ok ;
@@ -314,6 +320,7 @@ bool stopSensorRanging() {
         logData(msg,true);
         return false;
     }
+    sensorRangingStarted = false;
     return true;
 }
 
@@ -329,6 +336,17 @@ bool getSingleSensorMeasurement(VL53L4CX_MultiRangingData_t *pMultiRangingData) 
     logData("Get Measurement Data Ready called failed, or data not ready:" + vl_status,true);
     return false;
   }
+}
+
+bool isValidDistance(VL53L4CX_MultiRangingData_t *pMultiRangingData) {
+  if (pMultiRangingData->NumberOfObjectsFound == 0) {
+    return false;
+  }
+  if (pMultiRangingData->RangeData[0].RangeStatus == VL53L4CX_RANGESTATUS_RANGE_VALID ||
+      pMultiRangingData->RangeData[0].RangeStatus == VL53L4CX_RANGESTATUS_RANGE_VALID_MERGED_PULSE) {
+    return true;
+  }
+  return false;
 }
 
 DistanceResults getSensorDistance() {
@@ -369,19 +387,23 @@ DistanceResults getSensorDistance() {
     msg1 += pMultiRangingData->RangeData[0].RangeMilliMeter;
   }
   logData(msg1,false);
-  // If this is the first measurement with a wrap-around status, get another measurement
-  if (pMultiRangingData->NumberOfObjectsFound > 0 &&
-      pMultiRangingData->RangeData[0].RangeStatus == VL53L4CX_RANGESTATUS_RANGE_VALID_NO_WRAP_CHECK_FAIL ) {
-      logData("First measurement was wrap-around. Getting a second measurement...",false);
+  // If this is first measurement and there are no objects found
+  // or it's a wrap-around, try 3 times to get a good measurement
+  if ( !gotFirstMeasurement) {
+    int attempts = 0;
+    while (attempts < 3 && (!getSuccess || !isValidDistance(pMultiRangingData))) {
+      logData("Retrying first measurement...", false);
       getSuccess = getSingleSensorMeasurement(pMultiRangingData);
-      if (!getSuccess) {
-        String msg = "VL53L4CX get single measurement failed - ranging failure";
-        msg += vl_status;
-        logData(msg,true);
-        distanceResults.distanceStatus = DISTANCE_RANGING_FAILED;
-        return distanceResults;
-      }
+      attempts++;
+    }
+    if (!getSuccess || !isValidDistance(pMultiRangingData)) {
+      logData("Failed to get a valid measurement after 5 attempts", true);
+      distanceResults.distanceStatus = DISTANCE_RANGING_FAILED;
+      return distanceResults;
+    }
+    gotFirstMeasurement = true;
   }
+  
   numObjectsFound = pMultiRangingData->NumberOfObjectsFound;
   double minimumDistancemm = 10000;
   String msg="{ms:";
