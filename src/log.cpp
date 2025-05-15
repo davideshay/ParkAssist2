@@ -21,6 +21,7 @@ extern ParkPreferences defaultPreferences;
 
 bool okToLog = true;
 bool netLoggingStarted = false;
+bool serialLogging = false;
 
 AsyncWebServer serverLog(81);
 AsyncWebServer serverLogDetail(83);
@@ -118,9 +119,6 @@ void initLogging()
 
 void processConsoleMessage(uint8_t *data, size_t len)
 {
-  Serial.printf("Received %lu bytes from WebSerial: ", len);
-  Serial.write(data, len);
-  Serial.println();
   String d;
   for (size_t i = 0; i < len; i++)
   {
@@ -290,7 +288,7 @@ void openLogFileRead()
 
 void logData(String message, bool includeWeb = true)
 {
-  Serial.println(message);
+  if (serialLogging) { Serial.println(message); }
   if (defaultPreferences.webLogging && includeWeb)
   {
     WebSerial.println(message);
@@ -305,7 +303,7 @@ void logData(String message, bool includeWeb = true)
 //    uint16_t bytes_sent = logClientUDP.broadcastTo((message.c_str()),parkPreferences.logPort);
     if (!bytes_sent == message.length())
     {
-      Serial.println("UDP packet send failed");
+      WebSerial.println("UDP packet send failed");
     }
   }
 }

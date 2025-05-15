@@ -34,7 +34,7 @@
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
 
 carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 86, .maxFrontDistanceCm = 60, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
+  { .targetFrontDistanceCm = 83, .maxFrontDistanceCm = 60, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
      .carLogo = 
     {
       0b0100100100000000,
@@ -113,7 +113,7 @@ void setup() {
   Serial.begin(115200);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  Serial.println("");
+  Serial.println("Connecting");
  
   // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
@@ -256,6 +256,7 @@ void getCurrentData() {
       if (realDistanceDetected) {
         // At some point, I had already detected a real distance, but now I don't
         // This is either bad sensor data (99% of the time) or could be car backing out and can no longer be seen
+        evaluateDistance();
         return;
       } else {
       // Never had a real distance detected , default value to the max distance in the garage (distance to door)

@@ -190,11 +190,9 @@ bool initLidarSensor() {
   // Initialize I2C
   i2c_ok = Wire.begin(SDA_PIN, SCL_PIN);
   if (!i2c_ok) {
-    Serial.println("I2C initialization failed");
     logData("I2C initialization failed",true);
     return false;
   } else {
-    Serial.println("I2C initialization success");
     logData("I2C initialization success",true);
   }
   Wire.setClock(400000); // Set I2C clock speed to 400kHz
@@ -205,23 +203,17 @@ bool initLidarSensor() {
      // Configure VL53L4CX component.
   vl_status = sensor_vl53l4cx.begin();
   if (vl_status != VL53L4CX_ERROR_NONE) {
-    Serial.print("VL53L4CX begin failed: ");
-    Serial.println(vl_status);
     logData("VL53L4CX begin failed:" + vl_status,true);
     return false;
   } else {
-    Serial.println("VL53L4CX begin success");
     logData("VL53L4CX begin success",true);
   }
 
   vl_status = sensor_vl53l4cx.InitSensor(VL53L4CX_DEFAULT_DEVICE_ADDRESS);
   if (vl_status != VL53L4CX_ERROR_NONE) {
-    Serial.print("VL53L4CX Init Sensor failed: ");
-    Serial.println(vl_status);
     logData("VL53L4CX Init Sensor failed:" + vl_status,true);
     return false;
   } else {
-    Serial.println("VL53L4CX Init Sensor success");
     logData("VL53L4CX Init Sensor success",true);
   }
 

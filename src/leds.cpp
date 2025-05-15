@@ -70,7 +70,6 @@ uint16_t XYsafe( uint8_t x, uint8_t y)
 bool getBit(uint16_t input, int position) // position in range 0-15 (critically going from left-bit (15) to right-bit (0))
 {
     if (position > 15 || position < 0) {
-      WebSerial.println(F("Error getting bit, negative or > 15"));
       return 0;}
     int actualPos = 15 - position; 
     return (input >> actualPos) & 0x1;
