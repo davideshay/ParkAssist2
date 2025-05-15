@@ -1,8 +1,5 @@
 #include <Arduino.h>
-#include <FastLED.h>
 #include <parkassist.h>
-#include <WebSerial.h>
-#include <leds.h>
 
 #define COLOR_ORDER GRB
 #define CHIPSET     WS2812

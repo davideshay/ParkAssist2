@@ -2,12 +2,14 @@
 #define PARKASSIST_H
 
 #include <FastLED.h>
+#include <leds.h>
 #include <Preferences.h>
 #include <log.h>
 #include <lidar.h>
 #include <nvs_flash.h>
+#include <camera.h>
+#include <wifiota.h>
 
-#define TEMP_SENSOR_BUS 14
 #define SDA_PIN 19
 #define SCL_PIN 20
 #define IR_BREAK_SENSOR 21
@@ -67,6 +69,7 @@ struct ParkPreferences {
 
 void getPreferences();
 void setPreferences();
+void setOnePref(String msg);
 void clearPreferences();
 void clearNVSAndReboot();
 void resetBaseline();

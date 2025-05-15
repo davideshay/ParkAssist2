@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <parkassist.h>
+#include <FastLED.h>
 
 void initLEDs();
 uint16_t XYsafe( uint8_t x, uint8_t y);

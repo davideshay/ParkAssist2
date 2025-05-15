@@ -1,6 +1,4 @@
-#include <log.h>
-#include <lidar.h>
-#include <AsyncUDP.h>
+#include <parkassist.h>
 
 // Variables from main.cpp
 
@@ -21,7 +19,6 @@ extern ParkPreferences defaultPreferences;
 
 bool okToLog = true;
 bool netLoggingStarted = false;
-bool serialLogging = false;
 
 AsyncWebServer serverLog(81);
 AsyncWebServer serverLogDetail(83);
@@ -216,6 +213,10 @@ void processConsoleMessage(uint8_t *data, size_t len)
   {
     getPreferences();
   }
+  else if (d.startsWith("SETPREF"))
+  {
+    setOnePref(d);
+  }
   else if (d == "CALIBRATE1")
   {
     calibrateSensorPart1();
@@ -288,7 +289,7 @@ void openLogFileRead()
 
 void logData(String message, bool includeWeb = true)
 {
-  if (serialLogging) { Serial.println(message); }
+  if (parkPreferences.serialLogging) { Serial.println(message); }
   if (defaultPreferences.webLogging && includeWeb)
   {
     WebSerial.println(message);
@@ -300,7 +301,6 @@ void logData(String message, bool includeWeb = true)
   if (defaultPreferences.netLogging)
   {
     uint16_t bytes_sent = logClientUDP.writeTo(reinterpret_cast<const uint8_t *>(message.c_str()), message.length(), WiFi.broadcastIP(), parkPreferences.logPort);
-//    uint16_t bytes_sent = logClientUDP.broadcastTo((message.c_str()),parkPreferences.logPort);
     if (!bytes_sent == message.length())
     {
       WebSerial.println("UDP packet send failed");

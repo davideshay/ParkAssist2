@@ -8,7 +8,7 @@ extern ParkPreferences parkPreferences;
 ParkPreferences defaultPreferences = {
   .maxCameraCheckMillis = 1000,
   .timeBetweenWifiChecksMillis = 30000,
-  .logTarget = IPAddress(10,10,1,136),
+  .logTarget = IPAddress(10,10,1,136), // no longer used as all logging is to local broadcast address
   .logPort = 44444,
   .secsToReset = 60,
   .fileLogging = false,
@@ -38,14 +38,22 @@ void logPrefs(ParkPreferences logPrefs) {
     msg += logPrefs.logPort;
     msg += " secsToReset:";
     msg += logPrefs.secsToReset;
-    msg += " xtalksaved:";
+    msg += " caldatasaved:";
     msg += logPrefs.calibrationDataSaved;
-    msg += " first 2 bytes of xtalk data:";
+    msg += " calstructver:";
     msg += logPrefs.calData.struct_version;
     msg += ",ms between wifi checks:";
     msg += logPrefs.timeBetweenWifiChecksMillis;
     msg += ",spads:";
     msg += logPrefs.calData.customer.ref_spad_man__num_requested_ref_spads;
+    msg += ",filelogging:";
+    msg += logPrefs.fileLogging;
+    msg += ",netlogging:";
+    msg += logPrefs.netLogging;
+    msg += ",weblogging:";
+    msg += logPrefs.webLogging;
+    msg += ",seriallogging:",
+    msg += logPrefs.serialLogging;
     logData(msg, true);   
 }
 
@@ -114,3 +122,86 @@ void setPreferences() {
 
 }
 
+bool isValidNumber(String str) {
+    bool isValid = false;
+    for (size_t i = 0; i < str.length(); i++)
+    {
+        isValid = isDigit(str.charAt(i));
+        if (!isValid) {return false;}
+    }
+    return isValid;
+}
+
+bool isValidOnOffToken(String str) {
+    return (str == "ON" || str == "OFF" || str == "TRUE" || str == "FALSE" || str == "YES" || str == "NO");
+}
+
+bool tokenIsTrue(String str) {
+    return (str == "ON" || str == "TRUE" || str == "YES");
+}
+
+void setOnePref(String msg) {
+    String startToCut="SETPREF";
+    if (msg.length() <= startToCut.length()) {
+        logData("Invalid preference to set - nothing specified",true);
+        return;
+    }
+    String fullPrefToSet = msg.substring(startToCut.length()+1);
+    int spaceAt = fullPrefToSet.indexOf(" ");
+    if (spaceAt == -1 || fullPrefToSet.length() == spaceAt) {
+        logData("No value to set preference key to",true);
+        return;
+    }
+    fullPrefToSet.toUpperCase();
+    String prefToSet = fullPrefToSet.substring(1,spaceAt-1);
+    String valToSet = fullPrefToSet.substring(spaceAt+1);
+    if (prefToSet == "LOGPORT") {
+        if (!isValidNumber(valToSet)) {
+            logData("Log Port specified is not a valid number",true);
+            return;
+        }
+        uint16_t valPort = valToSet.toInt();
+        if (valPort > 65534) {
+            logData("Log Port is not valid for TCPIP Port",true);
+        }
+        parkPreferences.logPort = valPort;
+        setPreferences();        
+    } else if (prefToSet == "SECSTORESET") {
+        if (!isValidNumber(valToSet)) {
+            logData("Seconds to Reset specified is not a valid number",true);
+            return;
+        }
+        uint16_t secs = valToSet.toInt();
+        if (secs > 3600) {
+            logData("Seconds to Reset is too large",true);
+        }
+        parkPreferences.secsToReset = secs;
+        setPreferences();        
+    } else if (prefToSet == "FILELOGGING") {
+        if (!isValidOnOffToken(valToSet)) {
+            logData("Invalid on/off/true/false/yes/no value for file logging",true);
+        }
+        parkPreferences.fileLogging = tokenIsTrue(valToSet);
+        setPreferences();
+    } else if (prefToSet == "WEBLOGGING") {
+        if (!isValidOnOffToken(valToSet)) {
+            logData("Invalid on/off/true/false/yes/no value for web logging",true);
+        }
+        parkPreferences.webLogging = tokenIsTrue(valToSet);
+        setPreferences();
+    } else if (prefToSet == "NETLOGGING") {
+        if (!isValidOnOffToken(valToSet)) {
+            logData("Invalid on/off/true/false/yes/no value for net logging",true);
+        }
+        parkPreferences.netLogging = tokenIsTrue(valToSet);
+        setPreferences();
+    } else if (prefToSet == "SERIALLOGGING") {
+        if (!isValidOnOffToken(valToSet)) {
+            logData("Invalid on/off/true/false/yes/no value for serial logging",true);
+        }
+        parkPreferences.serialLogging = tokenIsTrue(valToSet);
+        setPreferences();
+    } else {
+        logData("Not a valid preference. Choose LOGPORT, SECSTORESET, FILELOGGING, WEBLOGGING, NETLOGGING, or SERIALLOGGING.",true);
+    }
+}

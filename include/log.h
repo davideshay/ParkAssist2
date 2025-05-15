@@ -7,6 +7,7 @@
 #include <WebSerial.h>
 #include <WiFiClient.h>
 #include <parkassist.h>
+#include <AsyncUDP.h>
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 

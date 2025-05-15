@@ -1,21 +1,7 @@
 #include <Arduino.h>
 #include <parkassist.h>
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <ESPAsyncWebServer.h>
-#include <WebSerial.h>
-#include <wificodes.h>
-#include <leds.h>
-#include <camera.h>
-#include <parkassist.h>
-#include <ota.h>
-#include <log.h>
-#include <FastLED.h>
-#include <PrettyOTA.h>
 #include <SimpleKalmanFilter.h>
-#include <lidar.h>
 #include <filter.h>
-
 
 // 
 // PIN LAYOUT -- all defined in parkassist.h
@@ -23,9 +9,8 @@
 // Camera uses pins 4,5,6,7,15,16,17,18,8,9,10,11,12,13
 //    (all of one side of the board except for 3 JTAG and 46 LOG
 //
-// #define TEMP_SENSOR_BUS 14.   (OneWire DS18B20)
-// #define DIST_SENSOR_TRIGGER 19. (HC-SR04)
-// #define DIST_SENSOR_ECHO 20. (HC-SR04)
+// #define SDA_PIN 19 I2C bus used for VL53L4CX distance sensor - SDA and SCL
+// #define SCL_PIN 20 
 // #define IR_BREAK_SENSOR 21
 // #define LED_PANEL_PIN 47. (WS2812 panel)
 
@@ -72,22 +57,11 @@ int64_t camera_checking_millis = 0;
 int64_t timer_started_millis = 0;
 int64_t dist_check_millis = 0;
 const int64_t time_between_dist_checks_millis = 120;
-int64_t temp_check_millis = 0;
-const int64_t time_between_temp_checks_millis = 60000;
 SimpleKalmanFilter kalmanFilter(75,75,3);
 ExponentialFilter<float> distanceFilter(65,defaultCar.sensorDistanceFromFrontCm);
 uint64_t wifi_check_millis = 0;
 
-AsyncWebServer serverOTA(80);
-PrettyOTA OTAUpdates;
-
-bool otaStarted = false;
-
-bool EnableAmbient = false;
-bool EnableSignal = false;
-char vl_report[256];
-uint8_t vl_status;
-bool sensorRangingStarted = false;
+extern bool otaStarted;
 
 double currentDistance;
 const double maxDistanceDeltaOK = 50;
@@ -111,39 +85,10 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(IR_BREAK_SENSOR, INPUT);
   Serial.begin(115200);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.println("Connecting");
- 
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  Serial.print("MAC address: ");
-  Serial.println(WiFi.macAddress());
 
-  serverOTA.begin();
-  Serial.println("OTA HTTP server started");
-
-  serverOTA.begin();
-  OTAUpdates.Begin(&serverOTA);
-  OTAUpdates.OverwriteAppVersion("1.0.0");
-  PRETTY_OTA_SET_CURRENT_BUILD_TIME_AND_DATE();
-  OTAUpdates.OnStart(onOTAStart);
-  OTAUpdates.OnProgress(onOTAProgress);
-  OTAUpdates.OnEnd(onOTAEnd);
-
-  logData("OTA Updates Enabled... pausing 10 seconds to allow updates",true);
-  delay(10000);
-
-  logData("OTA Update delay complete, getting preferences and starting logging",true);
-
+  initWifi();
+  initOTA();
+  
   if (!otaStarted) {
     getPreferences();
     initLogging();
@@ -151,7 +96,6 @@ void setup() {
   
   logData("OTA Updates Enabled, starting LIDAR sensor",true);
 
- 
   if (!otaStarted) {initLidarSensor();};
   if (!otaStarted) {initCamera();};
   if (!otaStarted) {initLEDs();};
@@ -162,7 +106,7 @@ void setup() {
   currentCar = defaultCar;
 }
 
-distanceEvaluation evaluateDistance() {
+void evaluateDistance() {
   // TODO -- does not deal with lengthOffsets for other cars
   distanceEvaluation distEval = {
     .colorRGB = CRGB::Blue,
@@ -214,7 +158,7 @@ distanceEvaluation evaluateDistance() {
       distEval.displayDistance = distEval.inchesToTarget;
     }
   }
-  return distEval;
+  currentDistanceEvaluation = distEval;
 }
 
 void getIRBreak() {
@@ -285,7 +229,7 @@ void getCurrentData() {
       currentDistance = distanceFilter.Current();
     }
   }
-  currentDistanceEvaluation = evaluateDistance();
+  evaluateDistance();
 };
 
 void displayCurrentData() {

@@ -1,13 +1,13 @@
-#include "lidar.h"
-#include "log.h"
+#include "parkassist.h"
 
 VL53L4CX sensor_vl53l4cx(&Wire, -1);
 extern uint8_t vl_status;
 extern bool otaStarted;
-extern bool sensorRangingStarted;
+bool sensorRangingStarted;
 extern ParkPreferences parkPreferences;
 bool deviceFound = false;
 bool gotFirstMeasurement = false;
+uint8_t vl_status;
 
 bool loadCalibrationData() {
     if (!parkPreferences.calibrationDataSaved) {
