@@ -2,8 +2,8 @@
 #define LEDS_H
 
 #include <Arduino.h>
-#include <parkassist.h>
 #include <FastLED.h>
+#include "parkassist.h"
 
 void initLEDs();
 uint16_t XYsafe( uint8_t x, uint8_t y);

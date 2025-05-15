@@ -1,12 +1,11 @@
-#ifndef OTA_H
-#define OTA_H
+#ifndef WIFIOTA_H
+#define WIFIOTA_H
 
 #include <PrettyOTA.h>
 #include <WebSerial.h>
 #include <parkassist.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
-#include <wificodes.h>
 
 void initWifi();
 void initOTA();

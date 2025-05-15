@@ -1,4 +1,5 @@
 #include <wifiota.h>
+#include <wificodes.h>
 
 int64_t ota_update_millis = 0;
 const int64_t time_between_ota_log_millis = 2000;
@@ -32,7 +33,7 @@ void initOTA() {
 
   serverOTA.begin();
   OTAUpdates.Begin(&serverOTA);
-  OTAUpdates.OverwriteAppVersion("1.0.0");
+  OTAUpdates.SetAppVersion("1.0.0");
   PRETTY_OTA_SET_CURRENT_BUILD_TIME_AND_DATE();
   OTAUpdates.OnStart(onOTAStart);
   OTAUpdates.OnProgress(onOTAProgress);

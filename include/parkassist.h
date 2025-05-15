@@ -2,7 +2,6 @@
 #define PARKASSIST_H
 
 #include <FastLED.h>
-#include <leds.h>
 #include <Preferences.h>
 #include <log.h>
 #include <lidar.h>

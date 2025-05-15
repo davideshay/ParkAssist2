@@ -7,7 +7,7 @@
 #include <ESPAsyncWebServer.h>
 #include "esp_camera.h"
 #include "camera_pins.h"
-#include "log.h"
+#include "parkassist.h"
 
 void initCamera();
 

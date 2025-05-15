@@ -2,6 +2,7 @@
 #include <parkassist.h>
 #include <SimpleKalmanFilter.h>
 #include <filter.h>
+#include <leds.h>
 
 // 
 // PIN LAYOUT -- all defined in parkassist.h

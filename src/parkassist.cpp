@@ -153,7 +153,7 @@ void setOnePref(String msg) {
         return;
     }
     fullPrefToSet.toUpperCase();
-    String prefToSet = fullPrefToSet.substring(1,spaceAt-1);
+    String prefToSet = fullPrefToSet.substring(0,spaceAt);
     String valToSet = fullPrefToSet.substring(spaceAt+1);
     if (prefToSet == "LOGPORT") {
         if (!isValidNumber(valToSet)) {
@@ -202,6 +202,7 @@ void setOnePref(String msg) {
         parkPreferences.serialLogging = tokenIsTrue(valToSet);
         setPreferences();
     } else {
+        logData("You are trying to update preference "+prefToSet+" to value:"+valToSet,true);
         logData("Not a valid preference. Choose LOGPORT, SECSTORESET, FILELOGGING, WEBLOGGING, NETLOGGING, or SERIALLOGGING.",true);
     }
 }

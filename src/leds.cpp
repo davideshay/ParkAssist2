@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <parkassist.h>
+#include <leds.h>
 
 #define COLOR_ORDER GRB
 #define CHIPSET     WS2812
