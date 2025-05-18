@@ -5,20 +5,22 @@ extern uint8_t vl_status;
 extern bool otaStarted;
 bool sensorRangingStarted;
 extern ParkPreferences parkPreferences;
+extern CalibrationPreferences calibrationPreferences;
 bool deviceFound = false;
 bool gotFirstMeasurement = false;
 uint8_t vl_status;
+bool logDetailedDistanceData = false;
 
 bool loadCalibrationData() {
-    if (!parkPreferences.calibrationDataSaved) {
+    if (!calibrationPreferences.calibrationDataSaved) {
         logData("No calibration data saved, starting without calibration", true);
         return false;
     }
-    if (parkPreferences.calData.struct_version == 0) {
+    if (calibrationPreferences.calData.struct_version == 0) {
         logData("Calibration Data saved, but struct version is zero zeroes. Starting without calibration.", true);
         return false;
     }
-    if (sensor_vl53l4cx.VL53L4CX_SetCalibrationData(&parkPreferences.calData) == VL53L4CX_ERROR_NONE) {
+    if (sensor_vl53l4cx.VL53L4CX_SetCalibrationData(&calibrationPreferences.calData) == VL53L4CX_ERROR_NONE) {
         logData("Sensor calibrated with saved xtalk data...", true);
     } else {
         logData("Failed to set calibration data on sensor", true);
@@ -29,14 +31,14 @@ bool loadCalibrationData() {
 
 void printPrefsData() {
     logData("Preferences version:",true);
-    logData(String(parkPreferences.calData.struct_version),true);
-    logData("opt center: " + String(parkPreferences.calData.optical_centre.x_centre) + "," + String(parkPreferences.calData.optical_centre.y_centre),true);
+    logData(String(calibrationPreferences.calData.struct_version),true);
+    logData("opt center: " + String(calibrationPreferences.calData.optical_centre.x_centre) + "," + String(calibrationPreferences.calData.optical_centre.y_centre),true);
 }
 
 bool getCalibrationData() {
     logData("Getting calibration data...Before Prefs:",true);
     printPrefsData();
-    vl_status = sensor_vl53l4cx.VL53L4CX_GetCalibrationData(&parkPreferences.calData);
+    vl_status = sensor_vl53l4cx.VL53L4CX_GetCalibrationData(&calibrationPreferences.calData);
     if (vl_status != VL53L4CX_ERROR_NONE) {
         String msg = "VL53L4CX get calibration data failed: ";
         msg += vl_status;
@@ -51,7 +53,7 @@ bool getCalibrationData() {
 bool setCalibrationData() {
     logData("Setting calibration data...current prefs are:",true);
     printPrefsData();
-    vl_status = sensor_vl53l4cx.VL53L4CX_SetCalibrationData(&parkPreferences.calData);
+    vl_status = sensor_vl53l4cx.VL53L4CX_SetCalibrationData(&calibrationPreferences.calData);
     if (vl_status != VL53L4CX_ERROR_NONE) {
         String msg = "VL53L8CX Set calibration data failed: ";
         msg += vl_status;
@@ -64,7 +66,7 @@ bool setCalibrationData() {
 }
 
 void saveCalibrationDataToPrefs() {
-    parkPreferences.calibrationDataSaved = true;
+    calibrationPreferences.calibrationDataSaved = true;
     setPreferences();
     logData("Calibration data saved to preferences",true);
 }
@@ -217,7 +219,7 @@ bool initLidarSensor() {
     logData("VL53L4CX Init Sensor success",true);
   }
 
-  if (parkPreferences.calibrationDataSaved) {
+  if (calibrationPreferences.calibrationDataSaved) {
     logData("VL53L4CX calibration data saved, loading...",true);
     if (!loadCalibrationData()) {
         logData("VL53L4CX load calibration data failed. Proceeding without calibration.",true);
@@ -229,7 +231,7 @@ bool initLidarSensor() {
     logData("VL53L4CX no calibration data saved, starting without calibration",true);
   }
 
-  if (!parkPreferences.calibrationDataSaved) {return true;};
+  if (!calibrationPreferences.calibrationDataSaved) {return true;};
 
   vl_status = sensor_vl53l4cx.VL53L4CX_SetMeasurementTimingBudgetMicroSeconds(100000);
   if (vl_status != VL53L4CX_ERROR_NONE) {
@@ -345,6 +347,7 @@ bool isValidDistance(VL53L4CX_MultiRangingData_t *pMultiRangingData) {
 }
 
 void logDetailedDistance(String desc,VL53L4CX_MultiRangingData_t *pMultiRangingData) {
+  if (!logDetailedDistanceData) {return;}
   String msg="{desc:" + desc + ",ms:";
   msg += esp_millis();
   msg += ",";
@@ -376,8 +379,8 @@ void logDetailedDistance(String desc,VL53L4CX_MultiRangingData_t *pMultiRangingD
   msg += pMultiRangingData->NumberOfObjectsFound;
   msg += ",strmcnt:";
   msg += pMultiRangingData->StreamCount;
-  msg += "}";
-  logData(msg,false);
+  msg += "},";
+  logData(msg,false,false);
 }
 
 DistanceResults getSensorDistance() {
@@ -415,7 +418,7 @@ DistanceResults getSensorDistance() {
   if ( !gotFirstMeasurement) {
     int attempts = 0;
     while (attempts < 5 && (!getSuccess || !isValidDistance(pMultiRangingData))) {
-      logData("Retrying first measurement...", false);
+      if (logDetailedDistanceData) {("Retrying first measurement...", false);}
       getSuccess = getSingleSensorMeasurement(pMultiRangingData);
       logDetailedDistance("retryread:"+attempts,pMultiRangingData);
       attempts++;

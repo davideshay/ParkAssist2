@@ -24,6 +24,11 @@ void initLEDs() {
     FastLED.show();
 }
 
+void blankDisplay() {
+  FastLED.clear();
+  FastLED.show();
+}
+
 uint16_t XY( uint8_t x, uint8_t y)
 {
   uint16_t i;

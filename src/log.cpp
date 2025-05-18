@@ -14,6 +14,7 @@ extern bool sensorRangingStarted;
 extern float currentTemp;
 extern ParkPreferences parkPreferences;
 extern ParkPreferences defaultPreferences;
+extern CalibrationPreferences calibrationPreferences;
 
 // Local file variables for logging
 
@@ -35,15 +36,6 @@ void connectNetLogging()
   {
     netLoggingStarted = true;
     String msg = "UDP Logging Initiated";
-    uint16_t bytes_sent = logClientUDP.writeTo(reinterpret_cast<const uint8_t *>(msg.c_str()), msg.length(), parkPreferences.logTarget, parkPreferences.logPort);
-    if (bytes_sent == msg.length())
-    {
-      logData("UDP packet sent successfully", true);
-    }
-    else
-    {
-      logData("UDP packet send failed", true);
-    }
     WebSerial.println("UDP Logging Initiated");
   }
 }
@@ -192,18 +184,6 @@ void processConsoleMessage(uint8_t *data, size_t len)
       logData("Error setting move distance as requested. Use a number.", true);
     }
   }
-  else if (d.startsWith("CHANGEIP") && parkPreferences.netLogging)
-  {
-    String newIPs = d.substring(9);
-    logData("Changing netlogging IP address to " + newIPs, true);
-    IPAddress newIP;
-    newIP.fromString(newIPs);
-    disconnectNetLogging();
-    parkPreferences.logTarget = newIP;
-    //setPreferences();
-    connectNetLogging();
-    logClientUDP.println("Changed netlogging to this IP address: " + newIPs);
-  }
   else if (d == "CLEARPREFS")
   {
     clearPreferences();
@@ -212,10 +192,19 @@ void processConsoleMessage(uint8_t *data, size_t len)
   else if (d == "GETPREFS")
   {
     getPreferences();
+    logPrefs(parkPreferences, calibrationPreferences);
   }
   else if (d.startsWith("SETPREF"))
   {
     setOnePref(d);
+  }
+  else if (d == "COPYCAL")
+  {
+    copyPrefsIntoCalData();
+  }
+  else if (d == "UPDATEPREFSVER")
+  {
+    updatePrefsVersion();
   }
   else if (d == "CALIBRATE1")
   {
@@ -246,18 +235,6 @@ void processConsoleMessage(uint8_t *data, size_t len)
     Wire.end();
     initLidarSensor();
   }
-  else if (d == "LOGGING ON")
-  {
-    parkPreferences.fileLogging = true;
-    setPreferences();
-    logData("File logging enabled", true);
-  }
-  else if (d == "LOGGING OFF")
-  {
-    parkPreferences.fileLogging = false;
-    setPreferences();
-    logData("File logging disabled", true);
-  }
   else
   {
     logData("Invalid command. Try 'demo on' to start demo mode or 'changeip x.x.x.x to change logging ip address.", true);
@@ -287,8 +264,11 @@ void openLogFileRead()
   }
 }
 
-void logData(String message, bool includeWeb = true)
+void logData(String message, bool includeWeb, bool includeMSHeader)
 {
+  if (includeMSHeader) {
+    message = "[" + String(esp_millis()) + "] " + message;
+  }
   if (parkPreferences.serialLogging) { Serial.println(message); }
   if (defaultPreferences.webLogging && includeWeb)
   {
@@ -320,7 +300,9 @@ void logCurrentData()
     carPresent = true;
   }
   String logLine;
-  logLine = "{cctcm:";
+  logLine = "{ms:";
+  logLine += esp_millis();
+  logLine += ",cctcm:";
   logLine += currentCar.targetFrontDistanceCm;
   logLine += ",dcm:";
   logLine += currentDistance;
@@ -339,9 +321,10 @@ void logCurrentData()
   logLine += ",co:";
   logLine += currentDistanceEvaluation.colorOffset;
   logLine += "},";
-  logData(logLine, true);
+  logData(logLine, true,false);
   logging_millis = esp_millis();
 }
+
 
 void logDetailData(double od, double cd, float ed, float ed2)
 {
@@ -360,8 +343,8 @@ void logDetailData(double od, double cd, float ed, float ed2)
   logLine += ed;
   logLine += ",ed2:";
   logLine += ed2;
-  logLine += "}";
-  logData(logLine, false);
+  logLine += "},";
+  logData(logLine, false,false);
 }
 
 void closeLogFile()

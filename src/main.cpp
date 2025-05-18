@@ -51,11 +51,13 @@ carInfoStruct currentCar;
 
 ParkPreferences parkPreferences;
 extern ParkPreferences defaultPreferences;
+CalibrationPreferences calibrationPreferences;
 
 stateOpts curState = BASELINE;
 
 int64_t camera_checking_millis = 0;
-int64_t timer_started_millis = 0;
+int64_t reset_present_millis = 0;
+int64_t reset_after_cleared_millis = 0;
 int64_t dist_check_millis = 0;
 const int64_t time_between_dist_checks_millis = 120;
 SimpleKalmanFilter kalmanFilter(75,75,3);
@@ -74,7 +76,7 @@ bool carFirstClearedSensor = false;
 double realDistanceDetected = false;
 bool carDetected;
 bool useMetric = false;
-bool alreadyDisplayTimedOut = false;
+bool carClearedSensorTimerStarted = false;
 
 bool demoMode = false;
 double demoDistance;
@@ -95,13 +97,13 @@ void setup() {
     initLogging();
   }
   
-  logData("OTA Updates Enabled, starting LIDAR sensor",true);
+  logData("OTA Updates Enabled, starting LIDAR sensor",true,true);
 
   if (!otaStarted) {initLidarSensor();};
   if (!otaStarted) {initCamera();};
   if (!otaStarted) {initLEDs();};
   
-  logData("Camera and LEDs initialized, starting baseline loop", true);
+  logData("Camera and LEDs initialized, starting baseline loop", true,true);
   
   //TODO -- DELETE LATER
   currentCar = defaultCar;
@@ -187,8 +189,8 @@ void getIRBreak() {
 }
 
 void getCurrentData() {
-  if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
-  dist_check_millis = esp_millis();
+//  if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
+//  dist_check_millis = esp_millis();
   getIRBreak();
   if (demoMode) {
     currentDistance = demoDistance;
@@ -244,8 +246,7 @@ void displayCurrentData() {
 }
 
 void resetBaseline() {
-  FastLED.clear();
-  FastLED.show();
+  blankDisplay();
   curState = BASELINE;
   carFirstDetected = false;
   carFirstDetectedDistanceFromFront = 0;
@@ -256,7 +257,6 @@ void resetBaseline() {
   distanceFilter.SetCurrent(defaultCar.sensorDistanceFromFrontCm);
   closeLogFile();
   carDetected = false;
-  alreadyDisplayTimedOut = false;
   resetLidarBaseline();
 }
 
@@ -274,6 +274,12 @@ void checkReconnectWiFi() {
   }
 }  
 
+void resetPresentClearedTimers() {
+  reset_present_millis = esp_millis();
+  reset_after_cleared_millis = esp_millis();
+  carClearedSensorTimerStarted = false;
+}
+
 void loop() {
     if (otaStarted) {
       delay(2000);
@@ -285,7 +291,6 @@ void loop() {
       case BASELINE:
         if (digitalRead(IR_BREAK_SENSOR) == LOW && !testModeNoIR) {
           logData("IR Sensor Broken from default. Car Present",true);
-          timer_started_millis = esp_millis();
           carDetected = true;
           curState = CAR_PRESENT;
           openLogFileAppend();
@@ -307,30 +312,51 @@ void loop() {
         curState = SHOWING_DATA;
         logData("Car Detected. Showing Data...",true);
         startSensorRanging();
-        timer_started_millis = esp_millis();
+        resetPresentClearedTimers();
         break;
       case SHOWING_DATA:
         getCurrentData();
         displayCurrentData();
-        if (((esp_millis() - timer_started_millis) > (unsigned long)(parkPreferences.secsToReset * 1000))) {
-            if (carDetected) {
-              if (alreadyDisplayTimedOut) {
-                logData("Restarted timer expired even though car is still detected",true);
-                curState = TIMER_EXPIRED;
-              } else {
-                alreadyDisplayTimedOut = true;
-                timer_started_millis = esp_millis();
-                logData("Timer expired but car still detected. Resetting timer 1 time.",true);
-              }
-            } else {
-              logData("Timer expired and car not detected, turning off display and resetting to baseline",true);
-              curState = TIMER_EXPIRED;
-            }
+        if ((esp_millis() - reset_present_millis) > (parkPreferences.secsToResetCarStillPresent * 1000)) {
+          if (carDetected) {
+            logData("Car still detected, turning off display and waiting to clear.",true);
+            curState = TIMER_EXPIRED_CAR_PRESENT;          
+          } else {
+            // this timer not relevant, but start over regardless
+            reset_present_millis = esp_millis();
+          }
+          break;
+        }
+        if (!carDetected && !carClearedSensorTimerStarted) {
+          reset_after_cleared_millis = esp_millis();
+          carClearedSensorTimerStarted = true;
+          logData("Car cleared sensor, starting after cleared timer",true);
+          break;
+        }
+        if (carClearedSensorTimerStarted && ((esp_millis() - reset_after_cleared_millis) > (parkPreferences.secsToResetAfterCleared * 1000))) {
+          if (carDetected) {
+            logData("Car still detected, but blocked timer not expired, resetting both timers",true);
+            resetPresentClearedTimers();
+          } else {
+            logData("Car cleared sensor, resetting to baseline",true);
+            curState = TIMER_EXPIRED;
+          }
         }
         break;
       case TIMER_EXPIRED:
         logData("Timer expired, turning off display and resetting to baseline",true);
-        resetBaseline();        
+        resetBaseline();
+      case TIMER_EXPIRED_CAR_PRESENT:
+        logData("Timer expired car still present, turn off display now.");
+        resetLidarBaseline();
+        blankDisplay();
+        curState = TIMER_EXPIRED_WAIT_TO_CLEAR;
+      case TIMER_EXPIRED_WAIT_TO_CLEAR:
+        getIRBreak();
+        if (!carDetected) {
+          logData("Timer had expired with car still present. Now car not present, resetting to baseline",true);
+          resetBaseline();
+        }
     }
 
 }
