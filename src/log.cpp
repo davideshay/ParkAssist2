@@ -1,6 +1,4 @@
-#include <log.h>
-#include <lidar.h>
-#include <AsyncUDP.h>
+#include <parkassist.h>
 
 // Variables from main.cpp
 
@@ -16,6 +14,7 @@ extern bool sensorRangingStarted;
 extern float currentTemp;
 extern ParkPreferences parkPreferences;
 extern ParkPreferences defaultPreferences;
+extern CalibrationPreferences calibrationPreferences;
 
 // Local file variables for logging
 
@@ -37,15 +36,6 @@ void connectNetLogging()
   {
     netLoggingStarted = true;
     String msg = "UDP Logging Initiated";
-    uint16_t bytes_sent = logClientUDP.writeTo(reinterpret_cast<const uint8_t *>(msg.c_str()), msg.length(), parkPreferences.logTarget, parkPreferences.logPort);
-    if (bytes_sent == msg.length())
-    {
-      logData("UDP packet sent successfully", true);
-    }
-    else
-    {
-      logData("UDP packet send failed", true);
-    }
     WebSerial.println("UDP Logging Initiated");
   }
 }
@@ -99,11 +89,25 @@ void initLogging()
   serverLogDetail.begin();
 }
 
+// web Console available commands:
+// demo on|off - turn demo mode on or off
+// irbreak on|off - turn demo IR break sensor on or off
+// start - set car detected, show distance continuously until timeout
+// real - show real distance from sensor (first measure will be invalid, need to do two)
+// move xx - move demo car to a specific distance from the sensor
+// changeip x.x.x.x - change the IP address of the net logging target
+// clearprefs - clear all preferences
+// getprefs - get all preferences and show on log
+// calibrate1 - calibrate sensor part 1 -- need a high reflective surface set 14cm above the sensor
+// calibrate2 - calibrate sensor part 2 -- need a dark surface set 60cm above the sensor
+// clearnvs - clear NVS and reboot
+// reboot - reboot the ESP32
+// reset -- go back to baseline settings
+
+
+
 void processConsoleMessage(uint8_t *data, size_t len)
 {
-  Serial.printf("Received %lu bytes from WebSerial: ", len);
-  Serial.write(data, len);
-  Serial.println();
   String d;
   for (size_t i = 0; i < len; i++)
   {
@@ -180,18 +184,6 @@ void processConsoleMessage(uint8_t *data, size_t len)
       logData("Error setting move distance as requested. Use a number.", true);
     }
   }
-  else if (d.startsWith("CHANGEIP") && parkPreferences.netLogging)
-  {
-    String newIPs = d.substring(9);
-    logData("Changing netlogging IP address to " + newIPs, true);
-    IPAddress newIP;
-    newIP.fromString(newIPs);
-    disconnectNetLogging();
-    parkPreferences.logTarget = newIP;
-    setPreferences();
-    connectNetLogging();
-    logClientUDP.println("Changed netlogging to this IP address: " + newIPs);
-  }
   else if (d == "CLEARPREFS")
   {
     clearPreferences();
@@ -200,14 +192,48 @@ void processConsoleMessage(uint8_t *data, size_t len)
   else if (d == "GETPREFS")
   {
     getPreferences();
+    logPrefs(parkPreferences, calibrationPreferences);
   }
-  else if (d == "CALIBRATE")
+  else if (d.startsWith("SETPREF"))
   {
-    calibrateSensor();
+    setOnePref(d);
+  }
+  else if (d == "COPYCAL")
+  {
+    copyPrefsIntoCalData();
+  }
+  else if (d == "UPDATEPREFSVER")
+  {
+    updatePrefsVersion();
+  }
+  else if (d == "CALIBRATE1")
+  {
+    calibrateSensorPart1();
+  }
+  else if (d == "CALIBRATE2")
+  {
+    calibrateSensorPart2();
   }
   else if (d == "CLEARNVS")
   {
     clearNVSAndReboot();
+  }
+  else if (d == "REBOOT")
+  {
+    logData("Rebooting ESP32", true);
+    delay(1000);
+    ESP.restart();
+  }
+  else if (d == "RESET")
+  {
+    logData("Resetting to baseline settings", true);
+    resetBaseline();
+  }
+  else if (d == "BUSRESET")
+  {
+    logData("Resetting I2C bus, restarting LIDAR sensor",true);
+    Wire.end();
+    initLidarSensor();
   }
   else
   {
@@ -238,9 +264,12 @@ void openLogFileRead()
   }
 }
 
-void logData(String message, bool includeWeb = true)
+void logData(String message, bool includeWeb, bool includeMSHeader)
 {
-  Serial.println(message);
+  if (includeMSHeader) {
+    message = "[" + String(esp_millis()) + "] " + message;
+  }
+  if (parkPreferences.serialLogging) { Serial.println(message); }
   if (defaultPreferences.webLogging && includeWeb)
   {
     WebSerial.println(message);
@@ -251,13 +280,10 @@ void logData(String message, bool includeWeb = true)
   }
   if (defaultPreferences.netLogging)
   {
-    uint16_t bytes_sent = logClientUDP.writeTo(reinterpret_cast<const uint8_t *>(message.c_str()), message.length(), parkPreferences.logTarget, parkPreferences.logPort);
+    uint16_t bytes_sent = logClientUDP.writeTo(reinterpret_cast<const uint8_t *>(message.c_str()), message.length(), WiFi.broadcastIP(), parkPreferences.logPort);
     if (!bytes_sent == message.length())
     {
-    }
-    else
-    {
-      Serial.println("UDP packet send failed");
+      WebSerial.println("UDP packet send failed");
     }
   }
 }
@@ -274,7 +300,9 @@ void logCurrentData()
     carPresent = true;
   }
   String logLine;
-  logLine = "{cctcm:";
+  logLine = "{ms:";
+  logLine += esp_millis();
+  logLine += ",cctcm:";
   logLine += currentCar.targetFrontDistanceCm;
   logLine += ",dcm:";
   logLine += currentDistance;
@@ -293,11 +321,12 @@ void logCurrentData()
   logLine += ",co:";
   logLine += currentDistanceEvaluation.colorOffset;
   logLine += "},";
-  logData(logLine, true);
+  logData(logLine, true,false);
   logging_millis = esp_millis();
 }
 
-void logDetailData(double od, double cd, float ed)
+
+void logDetailData(double od, double cd, float ed, float ed2)
 {
   if (!parkPreferences.fileLogging && !parkPreferences.webLogging && !parkPreferences.netLogging)
   {
@@ -312,8 +341,10 @@ void logDetailData(double od, double cd, float ed)
   logLine += cd;
   logLine += ",ed:";
   logLine += ed;
-  logLine += "}";
-  logData(logLine, false);
+  logLine += ",ed2:";
+  logLine += ed2;
+  logLine += "},";
+  logData(logLine, false,false);
 }
 
 void closeLogFile()

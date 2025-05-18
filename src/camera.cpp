@@ -54,7 +54,7 @@ void initCamera() {
       // camera init
       esp_err_t err = esp_camera_init(&config);
       if (err != ESP_OK) {
-        Serial.printf("Camera init failed with error 0x%x", err);
+        logData("Camera init failed with error :" + err, true);
         return;
       }
       sensor_t *s = esp_camera_sensor_get();
@@ -73,6 +73,6 @@ void initCamera() {
         esp_camera_fb_return(frame);
       });
       serverCam.begin();
-      Serial.println("Camera server started");
+      logData("Camera server started",true);
     
   }  

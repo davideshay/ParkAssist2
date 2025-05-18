@@ -3,11 +3,12 @@
 
 #include <FastLED.h>
 #include <Preferences.h>
-#include <vl53l8cx.h>
 #include <log.h>
+#include <lidar.h>
 #include <nvs_flash.h>
+#include <camera.h>
+#include <wifiota.h>
 
-#define TEMP_SENSOR_BUS 14
 #define SDA_PIN 19
 #define SCL_PIN 20
 #define IR_BREAK_SENSOR 21
@@ -48,27 +49,40 @@ enum stateOpts {
   DETECTING_CAR_TYPE,
   CAR_TYPE_DETECTED,
   SHOWING_DATA,
-  TIMER_EXPIRED
+  TIMER_EXPIRED,
+  TIMER_EXPIRED_CAR_PRESENT,
+  TIMER_EXPIRED_WAIT_TO_CLEAR,
 };
 
 struct ParkPreferences {
+  uint8_t struct_version; // version of this struct, so we can update it in the future
   int64_t maxCameraCheckMillis;
   int64_t timeBetweenWifiChecksMillis;
-  IPAddress logTarget;
   uint16_t logPort;
-  uint16_t secsToReset;
+  uint16_t secsToResetCarStillPresent;
+  uint16_t secsToResetAfterCleared;
   bool fileLogging;
   bool netLogging;
   bool webLogging;
   bool serialLogging;
-  uint8_t xtalk_data[VL53L8CX_XTALK_BUFFER_SIZE];
+};
+
+struct CalibrationPreferences {
   bool calibrationDataSaved;
+  VL53L4CX_CalibrationData_t calData;
 };
 
 void getPreferences();
+void logPrefs(ParkPreferences logPrefs, CalibrationPreferences logCalPrefs);
 void setPreferences();
+void setOnePref(String msg);
 void clearPreferences();
 void clearNVSAndReboot();
+void resetBaseline();
+
+/// --- temp
+void copyPrefsIntoCalData();
+void updatePrefsVersion();
 
 #endif
   

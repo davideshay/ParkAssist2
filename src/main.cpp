@@ -1,22 +1,8 @@
 #include <Arduino.h>
 #include <parkassist.h>
-#include <WiFi.h>
-#include <AsyncTCP.h>
-#include <WiFiClient.h>
-#include <ESPAsyncWebServer.h>
-#include <WebSerial.h>
-#include <wificodes.h>
-#include <leds.h>
-#include <camera.h>
-#include <parkassist.h>
-#include <ota.h>
-#include <log.h>
-#include <FastLED.h>
-#include <PrettyOTA.h>
 #include <SimpleKalmanFilter.h>
-#include <vl53l8cx.h>
-#include <lidar.h>
-
+#include <filter.h>
+#include <leds.h>
 
 // 
 // PIN LAYOUT -- all defined in parkassist.h
@@ -24,9 +10,8 @@
 // Camera uses pins 4,5,6,7,15,16,17,18,8,9,10,11,12,13
 //    (all of one side of the board except for 3 JTAG and 46 LOG
 //
-// #define TEMP_SENSOR_BUS 14.   (OneWire DS18B20)
-// #define DIST_SENSOR_TRIGGER 19. (HC-SR04)
-// #define DIST_SENSOR_ECHO 20. (HC-SR04)
+// #define SDA_PIN 19 I2C bus used for VL53L4CX distance sensor - SDA and SCL
+// #define SCL_PIN 20 
 // #define IR_BREAK_SENSOR 21
 // #define LED_PANEL_PIN 47. (WS2812 panel)
 
@@ -35,7 +20,7 @@
 // Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
 
 carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 79, .maxFrontDistanceCm = 50, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
+  { .targetFrontDistanceCm = 83, .maxFrontDistanceCm = 60, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
      .carLogo = 
     {
       0b0100100100000000,
@@ -66,112 +51,65 @@ carInfoStruct currentCar;
 
 ParkPreferences parkPreferences;
 extern ParkPreferences defaultPreferences;
+CalibrationPreferences calibrationPreferences;
 
 stateOpts curState = BASELINE;
 
 int64_t camera_checking_millis = 0;
-int64_t timer_started_millis = 0;
+int64_t reset_present_millis = 0;
+int64_t reset_after_cleared_millis = 0;
 int64_t dist_check_millis = 0;
-const int64_t time_between_dist_checks_millis = 60;
-int64_t temp_check_millis = 0;
-const int64_t time_between_temp_checks_millis = 60000;
+const int64_t time_between_dist_checks_millis = 120;
 SimpleKalmanFilter kalmanFilter(75,75,3);
+ExponentialFilter<float> distanceFilter(65,defaultCar.sensorDistanceFromFrontCm);
 uint64_t wifi_check_millis = 0;
 
-AsyncWebServer serverOTA(80);
-PrettyOTA OTAUpdates;
-
-bool otaStarted = false;
-
-// Declare the LIDAR sensor -- -1 is because we don't use the power enable pin
-// #define VL53L8CX_DISABLE_AMBIENT_PER_SPAD
-#define VL53L8CX_DISABLE_NB_SPADS_ENABLED
-// #define VL53L8CX_DISABLE_NB_TARGET_DETECTED
-#define VL53L8CX_DISABLE_SIGNAL_PER_SPAD
-#define VL53L8CX_DISABLE_RANGE_SIGMA_MM
-// #define VL53L8CX_DISABLE_DISTANCE_MM
-#define VL53L8CX_DISABLE_REFLECTANCE_PERCENT
-// #define VL53L8CX_DISABLE_TARGET_STATUS
-#define VL53L8CX_DISABLE_MOTION_INDICATOR
-
-VL53L8CX sensor_vl53l8cx(&Wire, -1);
-bool EnableAmbient = false;
-bool EnableSignal = false;
-char vl_report[256];
-uint8_t vl_status;
-bool sensorRangingStarted = false;
+extern bool otaStarted;
 
 double currentDistance;
 const double maxDistanceDeltaOK = 50;
 distanceEvaluation currentDistanceEvaluation;
 double carFirstDetectedDistanceFromFront;
-boolean carFirstDetected = false;
+bool carFirstDetected = false;
 double carFirstClearedSensorDistanceFromFront;
-boolean carFirstClearedSensor = false;
+bool carFirstClearedSensor = false;
 double realDistanceDetected = false;
-boolean carDetected;
-boolean useMetric = false;
+bool carDetected;
+bool useMetric = false;
+bool carClearedSensorTimerStarted = false;
 
-boolean demoMode = false;
+bool demoMode = false;
 double demoDistance;
-boolean demoIRBREAK = true;
+bool demoIRBREAK = false;
 
-boolean testModeNoIR = false;;
+bool testModeNoIR = false;
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(IR_BREAK_SENSOR, INPUT);
   Serial.begin(115200);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.println("");
- 
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
 
-  serverOTA.begin();
-  Serial.println("OTA HTTP server started");
-
-  serverOTA.begin();
-  OTAUpdates.Begin(&serverOTA);
-  OTAUpdates.OverwriteAppVersion("1.0.0");
-  PRETTY_OTA_SET_CURRENT_BUILD_TIME_AND_DATE();
-  OTAUpdates.OnStart(onOTAStart);
-  OTAUpdates.OnProgress(onOTAProgress);
-  OTAUpdates.OnEnd(onOTAEnd);
-
-  logData("OTA Updates Enabled... pausing 10 seconds to allow updates",true);
-  delay(10000);
-
-  logData("OTA Update delay complete, getting preferences and starting logging",true);
-
+  initWifi();
+  initOTA();
+  
   if (!otaStarted) {
     getPreferences();
     initLogging();
   }
   
-  logData("OTA Updates Enabled, starting LIDAR sensor",true);
+  logData("OTA Updates Enabled, starting LIDAR sensor",true,true);
 
- 
   if (!otaStarted) {initLidarSensor();};
   if (!otaStarted) {initCamera();};
   if (!otaStarted) {initLEDs();};
   
-  logData("Camera and LEDs initialized, starting baseline loop", true);
+  logData("Camera and LEDs initialized, starting baseline loop", true,true);
   
   //TODO -- DELETE LATER
   currentCar = defaultCar;
 }
 
-distanceEvaluation evaluateDistance() {
+void evaluateDistance() {
   // TODO -- does not deal with lengthOffsets for other cars
   distanceEvaluation distEval = {
     .colorRGB = CRGB::Blue,
@@ -223,7 +161,7 @@ distanceEvaluation evaluateDistance() {
       distEval.displayDistance = distEval.inchesToTarget;
     }
   }
-  return distEval;
+  currentDistanceEvaluation = distEval;
 }
 
 void getIRBreak() {
@@ -252,6 +190,7 @@ void getIRBreak() {
 
 void getCurrentData() {
 //  if (esp_millis() - dist_check_millis < time_between_dist_checks_millis) {return;}
+//  dist_check_millis = esp_millis();
   getIRBreak();
   if (demoMode) {
     currentDistance = demoDistance;
@@ -259,14 +198,17 @@ void getCurrentData() {
     DistanceResults distanceResults = getSensorDistance();
 
     double corrDistance = -1;
+    bool defaultDistance = false;
     if (distanceResults.distanceStatus != DISTANCE_OK) {
       if (realDistanceDetected) {
-      // At some point, I had already detected a real distance, but now I don't
-      // This is either bad sensor data (99% of the time) or could be car backing out and can no longer be seen
-      return;
+        // At some point, I had already detected a real distance, but now I don't
+        // This is either bad sensor data (99% of the time) or could be car backing out and can no longer be seen
+        evaluateDistance();
+        return;
       } else {
       // Never had a real distance detected , default value to the max distance in the garage (distance to door)
         corrDistance = currentCar.sensorDistanceFromFrontCm;
+        defaultDistance = true;
       }
     } else {
       // A "real" distance has come in from the sensor. If it deviates by more than 50cm from the current distance
@@ -279,13 +221,18 @@ void getCurrentData() {
       }
       corrDistance = distanceResults.distance_mm / 10;
     }
-    
-    float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
-    logDetailData(distanceResults.distance_mm,corrDistance,estimatedDistance);
-    currentDistance = estimatedDistance;
+    if (defaultDistance) {
+      logData("Default distance used, no real distance detected",false);
+      currentDistance = corrDistance;
+    } else {
+      float estimatedDistance = kalmanFilter.updateEstimate(corrDistance);
+      distanceFilter.Filter(corrDistance);
+      logDetailData(distanceResults.distance_mm,corrDistance,estimatedDistance,distanceFilter.Current());
+//      currentDistance = estimatedDistance;
+      currentDistance = distanceFilter.Current();
+    }
   }
-  currentDistanceEvaluation = evaluateDistance();
-  dist_check_millis = esp_millis();
+  evaluateDistance();
 };
 
 void displayCurrentData() {
@@ -299,8 +246,7 @@ void displayCurrentData() {
 }
 
 void resetBaseline() {
-  FastLED.clear();
-  FastLED.show();
+  blankDisplay();
   curState = BASELINE;
   carFirstDetected = false;
   carFirstDetectedDistanceFromFront = 0;
@@ -308,10 +254,10 @@ void resetBaseline() {
   carFirstClearedSensorDistanceFromFront = 0;
   realDistanceDetected = false;
   currentDistance = 0;
+  distanceFilter.SetCurrent(defaultCar.sensorDistanceFromFrontCm);
   closeLogFile();
-  sensor_vl53l8cx.stop_ranging();
-  sensorRangingStarted = false;
   carDetected = false;
+  resetLidarBaseline();
 }
 
 void checkReconnectWiFi() {
@@ -328,6 +274,12 @@ void checkReconnectWiFi() {
   }
 }  
 
+void resetPresentClearedTimers() {
+  reset_present_millis = esp_millis();
+  reset_after_cleared_millis = esp_millis();
+  carClearedSensorTimerStarted = false;
+}
+
 void loop() {
     if (otaStarted) {
       delay(2000);
@@ -339,7 +291,6 @@ void loop() {
       case BASELINE:
         if (digitalRead(IR_BREAK_SENSOR) == LOW && !testModeNoIR) {
           logData("IR Sensor Broken from default. Car Present",true);
-          timer_started_millis = esp_millis();
           carDetected = true;
           curState = CAR_PRESENT;
           openLogFileAppend();
@@ -361,19 +312,51 @@ void loop() {
         curState = SHOWING_DATA;
         logData("Car Detected. Showing Data...",true);
         startSensorRanging();
-        timer_started_millis = esp_millis();
+        resetPresentClearedTimers();
         break;
       case SHOWING_DATA:
         getCurrentData();
         displayCurrentData();
-        if (((esp_millis() - timer_started_millis) > (unsigned long)(parkPreferences.secsToReset * 1000))  && !carDetected) {
-            logData("Timer expired and no car Detected",true);
+        if ((esp_millis() - reset_present_millis) > (parkPreferences.secsToResetCarStillPresent * 1000)) {
+          if (carDetected) {
+            logData("Car still detected, turning off display and waiting to clear.",true);
+            curState = TIMER_EXPIRED_CAR_PRESENT;          
+          } else {
+            // this timer not relevant, but start over regardless
+            reset_present_millis = esp_millis();
+          }
+          break;
+        }
+        if (!carDetected && !carClearedSensorTimerStarted) {
+          reset_after_cleared_millis = esp_millis();
+          carClearedSensorTimerStarted = true;
+          logData("Car cleared sensor, starting after cleared timer",true);
+          break;
+        }
+        if (carClearedSensorTimerStarted && ((esp_millis() - reset_after_cleared_millis) > (parkPreferences.secsToResetAfterCleared * 1000))) {
+          if (carDetected) {
+            logData("Car still detected, but blocked timer not expired, resetting both timers",true);
+            resetPresentClearedTimers();
+          } else {
+            logData("Car cleared sensor, resetting to baseline",true);
             curState = TIMER_EXPIRED;
+          }
         }
         break;
       case TIMER_EXPIRED:
         logData("Timer expired, turning off display and resetting to baseline",true);
-        resetBaseline();        
+        resetBaseline();
+      case TIMER_EXPIRED_CAR_PRESENT:
+        logData("Timer expired car still present, turn off display now.");
+        resetLidarBaseline();
+        blankDisplay();
+        curState = TIMER_EXPIRED_WAIT_TO_CLEAR;
+      case TIMER_EXPIRED_WAIT_TO_CLEAR:
+        getIRBreak();
+        if (!carDetected) {
+          logData("Timer had expired with car still present. Now car not present, resetting to baseline",true);
+          resetBaseline();
+        }
     }
 
 }
