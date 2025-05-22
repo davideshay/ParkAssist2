@@ -321,9 +321,6 @@ void loop() {
           if (carDetected) {
             logData("Car still detected, turning off display and waiting to clear.",true);
             curState = TIMER_EXPIRED_CAR_PRESENT;          
-          } else {
-            // this timer not relevant, but start over regardless
-            reset_present_millis = esp_millis();
           }
           break;
         }
