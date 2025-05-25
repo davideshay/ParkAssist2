@@ -324,6 +324,10 @@ void loop() {
           }
           break;
         }
+        if (carDetected && carClearedSensorTimerStarted) {
+          resetPresentClearedTimers();
+          break;
+        }
         if (!carDetected && !carClearedSensorTimerStarted) {
           reset_after_cleared_millis = esp_millis();
           carClearedSensorTimerStarted = true;
@@ -331,13 +335,8 @@ void loop() {
           break;
         }
         if (carClearedSensorTimerStarted && ((esp_millis() - reset_after_cleared_millis) > (parkPreferences.secsToResetAfterCleared * 1000))) {
-          if (carDetected) {
-            logData("Car still detected, but blocked timer not expired, resetting both timers",true);
-            resetPresentClearedTimers();
-          } else {
-            logData("Car cleared sensor, resetting to baseline",true);
-            curState = TIMER_EXPIRED;
-          }
+          logData("Car cleared sensor, resetting to baseline",true);
+          curState = TIMER_EXPIRED;
         }
         break;
       case TIMER_EXPIRED:
