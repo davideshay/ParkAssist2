@@ -3,6 +3,7 @@
 #include <SimpleKalmanFilter.h>
 #include <filter.h>
 #include <leds.h>
+#include <ble.h>
 
 // 
 // PIN LAYOUT -- all defined in parkassist.h
@@ -63,6 +64,7 @@ const int64_t time_between_dist_checks_millis = 120;
 SimpleKalmanFilter kalmanFilter(75,75,3);
 ExponentialFilter<float> distanceFilter(65,defaultCar.sensorDistanceFromFrontCm);
 uint64_t wifi_check_millis = 0;
+uint64_t ble_check_millis = 0;
 
 extern bool otaStarted;
 
@@ -102,6 +104,7 @@ void setup() {
   if (!otaStarted) {initLidarSensor();};
   if (!otaStarted) {initCamera();};
   if (!otaStarted) {initLEDs();};
+  if (!otaStarted) {initBLE();};
   
   logData("Camera and LEDs initialized, starting baseline loop", true,true);
   
@@ -274,6 +277,13 @@ void checkReconnectWiFi() {
   }
 }  
 
+void checkBleLoop() {
+  if (esp_millis() - ble_check_millis > 2000) {
+    bleLoop();
+    ble_check_millis = esp_millis();
+  }
+}
+
 void resetPresentClearedTimers() {
   reset_present_millis = esp_millis();
   reset_after_cleared_millis = esp_millis();
@@ -286,6 +296,7 @@ void loop() {
       return;
     }
     checkReconnectWiFi();
+    checkBleLoop();
     WebSerial.loop();
     switch (curState) {
       case BASELINE:
