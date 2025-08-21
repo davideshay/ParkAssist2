@@ -1,14 +1,13 @@
-#include <Arduino.h>
-#include <NimBLEDevice.h>
-#include <NimBLEAdvertisedDevice.h>
-#include "NimBLEEddystoneTLM.h"
-#include "NimBLEBeacon.h"
 #include "parkassist.h"
+#include "ble.h"
 
 #define ENDIAN_CHANGE_U16(x) ((((x) & 0xFF00) >> 8) + (((x) & 0xFF) << 8))
 
 int         scanTime = 5 * 1000; // In milliseconds
 NimBLEScan* pBLEScan;
+
+
+
 
 class ScanCallbacks : public NimBLEScanCallbacks {
     void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
@@ -85,7 +84,8 @@ void initBLE() {
     pBLEScan->setScanCallbacks(&scanCallbacks);
     pBLEScan->setActiveScan(true);
     pBLEScan->setInterval(100);
-    pBLEScan->setWindow(100);
+    pBLEScan->setWindow(99);
+     pBLEScan->setFilterPolicy(BLE_HCI_SCAN_FILT_USE_WL);
 }
 
 void bleLoop() {

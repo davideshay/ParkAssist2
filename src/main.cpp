@@ -4,6 +4,7 @@
 #include <filter.h>
 #include <leds.h>
 #include <ble.h>
+#include <cars.h>
 
 // 
 // PIN LAYOUT -- all defined in parkassist.h
@@ -16,39 +17,7 @@
 // #define IR_BREAK_SENSOR 21
 // #define LED_PANEL_PIN 47. (WS2812 panel)
 
-// structureof carLogo - 1 blank bit, followed by 3 bits (color 0-7) each 5x to represent first 5 pixels. 
-// Cover 60 pixels -- 6 rows x 10 columns. Go row-by-row in order. So first int_16 is first 5 pixels.
-// Second int_16 is 5 remaining pixels in first row, then on to 2nd row.
-
-carInfoStruct defaultCar = 
-  { .targetFrontDistanceCm = 83, .maxFrontDistanceCm = 60, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,
-     .carLogo = 
-    {
-      0b0100100100000000,
-      0b0100000100100100,
-      0b0100000100000100,
-      0b0100000100000000,
-      0b0100100100000000,
-      0b0100000100000000,
-      0b0100100000000000,
-      0b0100000100100100,
-      0b0100000100000000,
-      0b0100000000000100,
-      0b0100000100000000,
-      0b0100000100100100
-    },
-    .logoColors = {
-      CRGB::Black,
-      CRGB::White,
-      CRGB::Red,
-      CRGB::Green,
-      CRGB::Blue,
-      CRGB::Yellow,
-      CRGB::Orange,
-      CRGB::Purple }
-  };
-
-carInfoStruct currentCar;
+extern const carInfoStruct defaultCar;
 
 ParkPreferences parkPreferences;
 extern ParkPreferences defaultPreferences;
@@ -315,6 +284,7 @@ void loop() {
       case DETECTING_CAR_TYPE:
         if (esp_millis() - camera_checking_millis > parkPreferences.maxCameraCheckMillis) {
           logData("Car Detection Timeout, set to default",true);
+          // TODO fix current car assignment based on BLE data
           currentCar = defaultCar;
           curState = CAR_TYPE_DETECTED;
         }

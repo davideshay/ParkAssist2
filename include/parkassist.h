@@ -8,6 +8,7 @@
 #include <nvs_flash.h>
 #include <camera.h>
 #include <wifiota.h>
+#include <NimBLEAddress.h>
 
 #define SDA_PIN 19
 #define SCL_PIN 20
@@ -23,7 +24,15 @@ struct carInfoStruct {
     int sensorDistanceFromFrontCm;
     uint16_t carLogo[12];
     CRGB logoColors[8];
+    NimBLEAddress carBeaconAddress;
   };
+
+enum CarType {
+  R1S=0,
+  TM3=1,
+  TMY=2,
+  NUM_CARTYPES=3
+};
 
 enum colorCodes {
     RED,YELLOW,GREEN,WHITE,BLUE
