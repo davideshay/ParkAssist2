@@ -29,8 +29,8 @@ struct carInfoStruct {
 
 enum CarType {
   R1S=0,
-  TM3=1,
-  TMY=2,
+  TESLAM3=1,
+  TESLAMY=2,
   NUM_CARTYPES=3
 };
 

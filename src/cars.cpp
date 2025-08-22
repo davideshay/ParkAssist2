@@ -32,7 +32,7 @@ const carInfoStruct cars[] = {
     CRGB::Yellow,
     CRGB::Orange,
     CRGB::Purple },
-    .carBeaconAddress = NimBLEAddress("7e:c5:d6:4a:d4:bb",0)
+    .carBeaconAddress = NimBLEAddress("7e:c5:d6:4a:d4:bb",1)
 },
 // Tesla 3
 { .targetFrontDistanceCm = 83, .maxFrontDistanceCm = 60, .lengthOffsetCm = 0, .sensorDistanceFromFrontCm = 550,

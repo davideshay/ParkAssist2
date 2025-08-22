@@ -17,7 +17,7 @@
 // #define IR_BREAK_SENSOR 21
 // #define LED_PANEL_PIN 47. (WS2812 panel)
 
-extern const carInfoStruct defaultCar;
+//extern const carInfoStruct defaultCar;
 
 ParkPreferences parkPreferences;
 extern ParkPreferences defaultPreferences;
